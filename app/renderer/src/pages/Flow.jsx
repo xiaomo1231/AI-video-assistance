@@ -55,7 +55,7 @@ export default function Flow() {
           {wf.steps.map((s, i) => { const q = pos(i); const status = live?.status?.[i]; return (
             <div key={i} className={'node' + (sel === i ? ' on' : '') + (status ? ' ' + status : s.skip ? ' skipped' : '')} style={{ left: q.x, top: q.y, height: NH }} onClick={() => setSel(i)}>
               <span className={'tag ' + s.kind}>{KIND[s.kind]}</span> <span className="note">{i + 1}</span>
-              <b>{s.name}</b><div className="d">{live?.results?.[i] || s.desc || s.tool}</div>
+              <b>{s.name}</b><div className="d">{live?.results?.[i] || s.desc || TOOLS.find((x) => x[0] === s.tool)?.[2] || ""}</div>
             </div>); })}
         </div>
       </div>
@@ -80,9 +80,9 @@ export default function Flow() {
             <div className="field"><label>做什么</label><select value={st.tool} onChange={(e) => { const t = TOOLS.find((x) => x[0] === e.target.value); upd((n) => { n.steps[sel].tool = t[0]; n.steps[sel].kind = t[1]; }); }}>{TOOLS.map((t) => <option key={t[0]} value={t[0]}>{KIND[t[1]]} · {t[2]}</option>)}{!TOOLS.some((t) => t[0] === st.tool) && <option value={st.tool}>{st.tool}</option>}</select></div>
             <div className="field row" style={{ flexWrap: 'wrap' }}>
               <button className="btn sm" onClick={() => upd((n) => { n.steps[sel].skip = !n.steps[sel].skip; })}>{st.skip ? '恢复这一步' : '跳过这一步'}</button>
-              <button className="btn sm" disabled={sel === 0} onClick={() => { upd((n) => { const [x] = n.steps.splice(sel, 1); n.steps.splice(sel - 1, 0, x); }); setSel(sel - 1); }}>上移</button>
-              <button className="btn sm" disabled={sel === wf.steps.length - 1} onClick={() => { upd((n) => { const [x] = n.steps.splice(sel, 1); n.steps.splice(sel + 1, 0, x); }); setSel(sel + 1); }}>下移</button>
-              <button className="btn sm" onClick={() => { upd((n) => { n.steps.splice(sel, 1); if (n.loop && (n.loop.from >= n.steps.length || n.loop.to >= n.steps.length)) n.loop = null; }); setSel(null); }}>删除</button>
+              <button className="btn sm" disabled={sel === 0} onClick={() => { upd((n) => keepLoop(n, () => { const [x] = n.steps.splice(sel, 1); n.steps.splice(sel - 1, 0, x); })); setSel(sel - 1); }}>上移</button>
+              <button className="btn sm" disabled={sel === wf.steps.length - 1} onClick={() => { upd((n) => keepLoop(n, () => { const [x] = n.steps.splice(sel, 1); n.steps.splice(sel + 1, 0, x); })); setSel(sel + 1); }}>下移</button>
+              <button className="btn sm" onClick={() => { upd((n) => keepLoop(n, () => { n.steps.splice(sel, 1); })); setSel(null); }}>删除</button>
               <button className="btn sm ghost" onClick={() => setSel(null)}>返回</button>
             </div>
             <div className="note" style={{ padding: '0 14px' }}>改动只在这里生效；点「存成我的 Skill」保存下来，以后在开始页直接用。</div>
@@ -91,4 +91,16 @@ export default function Flow() {
       </div>
     </div>
   );
+}
+
+/** 增删、移动步骤后，审片回路跟着原来的步骤走，而不是停在原来的序号上 */
+function keepLoop(n, fn) {
+  const L = n.loop; const from = L && n.steps[L.from]; const to = L && n.steps[L.to]; const mids = L ? n.steps.slice(L.from + 1, L.to + 1) : [];
+  fn();
+  if (!L) return;
+  const f = n.steps.indexOf(from);
+  if (f < 0 || from.kind !== 'review') { n.loop = null; return; } // 审片步骤删了，回路也就没了
+  let t = n.steps.indexOf(to);
+  if (t < 0) t = Math.max(...mids.map((x) => n.steps.indexOf(x)), -1); // 修改的最后一步删了，退到还在的那一步
+  n.loop = t > f ? { ...L, from: f, to: t } : null;
 }

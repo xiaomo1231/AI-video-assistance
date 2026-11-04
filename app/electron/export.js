@@ -35,7 +35,9 @@ export async function openRenderer({ width, height, project, dir }) {
 }
 
 export async function exportFilm({ dir, project: p, opts = {}, onProgress = () => {}, signal }) {
-  const fmt = CODECS[opts.codec || p.export.codec] || CODECS.h264;
+  const codec = CODECS[opts.codec || p.export.codec] ? opts.codec || p.export.codec : 'h264'; const fmt = CODECS[codec];
+  // ProRes 中间片默认保留原始电平，交给剪辑软件；其余格式按设置做响度归一
+  const norm = p.export.normalize ?? !/prores/.test(codec);
   const h = opts.height || p.export.height || p.height; const w = Math.round((p.width / p.height) * h / 2) * 2; const H = Math.round(h / 2) * 2;
   const fps = opts.fps || p.export.fps || p.fps;
   const name = (opts.name || p.name).replace(/[\\/:*?"<>|]/g, '_');
@@ -46,7 +48,7 @@ export async function exportFilm({ dir, project: p, opts = {}, onProgress = () =
 
   onProgress({ phase: 'audio', pct: 0, text: '混音' });
   const wav = path.join(dir, '.mojian/cache', 'mix.wav');
-  const loud = await mixAudio(dir, p, wav, { loudness: p.export.loudness ?? -14, signal });
+  const loud = await mixAudio(dir, p, wav, { loudness: norm ? p.export.loudness ?? -14 : null, signal });
   if (signal?.aborted) throw new Error('已取消');
 
   onProgress({ phase: 'video', pct: 0, text: '逐帧渲染' });

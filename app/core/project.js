@@ -76,8 +76,10 @@ export const ops = {
   /** 裁剪镜头：左边裁 dl 秒（源入点后移），右边定长 */
   trimShot(p, { id, left = 0, dur }) {
     const s = p.shots.find((x) => x.id === id); if (!s) return;
+    if (left) left = snap(Math.max(-(s.src.in || 0) / (s.speed || 1), left), p.fps); // 左边对齐到帧，不能裁到素材开头之前
     if (left) { s.src = { ...s.src, in: Math.max(0, (s.src.in || 0) + left * (s.speed || 1)) }; s.dur = snap(Math.max(1 / p.fps, s.dur - left), p.fps); for (const l of shotLines(p, id)) { l.off = Math.max(0, l.off - left); l.soff = Math.max(0, l.soff - left); } }
     if (dur != null) s.dur = snap(Math.max(1 / p.fps, dur), p.fps);
+    const m = maxDur(p, s); if (m != null && s.dur > m) s.dur = snap(m, p.fps);
     s.lock = true;
   },
   freeze(p, { id, sec = 2 }) { const s = p.shots.find((x) => x.id === id); if (s) { s.hold = (s.hold || 0) + sec; if (s.lock) s.dur += sec; } },
@@ -147,4 +149,11 @@ export function apply(p, list) {
   }
   layout(p);
   return out;
+}
+
+/** 视频片段最多能拉到多长（源素材剩下的部分按速度换算，加上定格）；不是视频返回 null */
+export function maxDur(p, s) {
+  const a = s.src?.kind === 'media' && s.src.asset && p.assets.find((x) => x.id === s.src.asset);
+  if (!a || a.kind !== 'video' || !a.dur) return null;
+  return Math.max(1 / p.fps, (a.dur - (s.src.in || 0)) / (s.speed || 1) + (s.hold || 0));
 }

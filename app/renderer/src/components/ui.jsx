@@ -6,11 +6,15 @@ import { api } from '../api.js';
 import { useStore } from '../store.js';
 
 export function Slider({ label, value, min = -1, max = 1, step = 0.01, fmt = (v) => (+v).toFixed(2), onChange, onStart, onEnd }) {
+  const kb = useRef(false); const kt = useRef(null);
   return (
     <div className="sl">
       <span>{label}</span>
       <input type="range" min={min} max={max} step={step} value={value ?? 0}
-        onPointerDown={onStart} onPointerUp={onEnd}
+        onPointerDown={() => { kb.current = false; onStart?.(); }} onPointerUp={(e) => { onEnd?.(); e.currentTarget.blur(); /* 松手就还焦点，方向键继续管播放头 */ }}
+        onKeyDown={(e) => { clearTimeout(kt.current); if (!kb.current && /Arrow|Page|Home|End/.test(e.key)) { kb.current = true; onStart?.(); } }}
+        onKeyUp={() => { clearTimeout(kt.current); if (kb.current) kt.current = setTimeout(() => { kb.current = false; onEnd?.(); }, 700); /* 连着按的几下合成一步撤销 */ }}
+        onBlur={() => { clearTimeout(kt.current); if (kb.current) { kb.current = false; onEnd?.(); } }}
         onChange={(e) => onChange(+e.target.value)} onDoubleClick={() => { onStart?.(); onChange(0); onEnd?.(); }} />
       <span>{fmt(value ?? 0)}</span>
     </div>
@@ -37,12 +41,17 @@ export function Field({ label, children, note }) {
   return <div className="field"><label>{label}</label>{children}{note && <div className="note" style={{ marginTop: 4 }}>{note}</div>}</div>;
 }
 
-/** 输入框：失焦或回车才提交，避免每个字都进撤销栈 */
-export function Lazy({ value, onCommit, area, ...rest }) {
+/** 输入框：失焦或回车才提交，避免每个字都进撤销栈。
+ *  area：台词、花字这类一段话，回车提交，Shift+回车换行；area multi：每行一条的列表，Ctrl+回车提交 */
+export function Lazy({ value, onCommit, area, multi, ...rest }) {
   const [v, setV] = useState(value ?? '');
   useEffect(() => setV(value ?? ''), [value]);
-  const commit = () => { if ((v ?? '') !== (value ?? '')) onCommit(v); };
-  const P = { ...rest, value: v, onChange: (e) => setV(e.target.value), onBlur: commit, onKeyDown: (e) => { if (e.key === 'Enter' && (!area || e.ctrlKey || e.metaKey)) { e.preventDefault(); commit(); e.target.blur(); } if (e.key === 'Escape') { setV(value ?? ''); e.target.blur(); } e.stopPropagation(); } };
+  const sent = useRef(null);
+  const commit = () => { const out = area && !multi ? String(v ?? '').trim() : v; if ((out ?? '') !== (value ?? '') && sent.current !== out) { sent.current = out; onCommit(out); } };
+  useEffect(() => { sent.current = null; }, [value]);
+  const enterCommits = (e) => (!area ? true : multi ? e.ctrlKey || e.metaKey : !e.shiftKey);
+  const P = { ...rest, value: v, onChange: (e) => setV(e.target.value), onBlur: commit, onKeyDown: (e) => { if (e.key === 'Enter' && !e.nativeEvent.isComposing && enterCommits(e)) { e.preventDefault(); commit(); e.target.blur(); } if (e.key === 'Escape') { setV(value ?? ''); e.target.blur(); } e.stopPropagation(); } };
+  if (area && !rest.placeholder) P.placeholder = multi ? '每行一条，Ctrl+回车确认' : '回车确认，Shift+回车换行';
   return area ? <textarea {...P} /> : <input {...P} />;
 }
 

@@ -1,6 +1,8 @@
 // 剪辑页：素材库 / 预览 / 属性 / 时间线
 import React, { useState } from 'react';
 import { useStore, S } from '../store.js';
+import { withIds } from '../../../core/project.js';
+import { TEMPLATES, TEMPLATE_CATS, templateById } from '../../../core/templates.js';
 import { api, pathOf } from '../api.js';
 import { shotAt, absT, snap } from '../../../core/timing.js';
 import PlayerView from '../components/PlayerView.jsx';
@@ -19,7 +21,10 @@ export function addAssetToTimeline(a) {
   if (a.kind === 'audio') { S().edit({ op: 'addMusic', args: { asset: a.id, name: a.name, t0: snap(t, p.fps), dur: Math.min(a.dur || 10, Math.max(1, p.duration - t) || a.dur || 10) } }, '加音乐'); return; }
   const kind = a.kind === 'scene' ? 'scene' : 'media';
   const dur = a.kind === 'image' ? 4 : snap(a.dur || 4, p.fps);
-  S().edit({ op: 'addShot', args: { after: cur?.id, shot: { title: a.name.replace(/\.\w+$/, ''), src: { kind, asset: a.id, in: 0, fit: 'cover' }, lock: a.kind !== 'image', dur, minDur: a.kind === 'image' ? 4 : dur } } }, '加到主轨');
+  const args = withIds('addShot', { after: cur?.id, shot: { title: a.name.replace(/\.\w+$/, ''), src: { kind, asset: a.id, in: 0, fit: 'cover' }, lock: a.kind !== 'image', dur, minDur: a.kind === 'image' ? 4 : dur } });
+  S().edit({ op: 'addShot', args }, '加到主轨');
+  // 播放头挪到新片段末尾，连着点几个素材就按点的顺序往后排
+  const n = S().p.shots.find((x) => x.id === args.shot.id); if (n) useStore.setState({ t: Math.max(0, n.t0 + n.dur - 1 / p.fps), playing: false });
 }
 
 export default function Edit() {
@@ -161,6 +166,11 @@ function ProjectProps({ p }) {
       <label className="row" style={{ color: 'var(--fg)', marginTop: 6 }}><input type="checkbox" checked={p.subtitle.burn !== false} onChange={(e) => S().replace({ ...S().p, subtitle: { ...p.subtitle, burn: e.target.checked } }, '烧录字幕')} />字幕烧进画面</label>
       <label className="row" style={{ color: 'var(--fg)' }}><input type="checkbox" checked={!!p.subtitle.bilingual} onChange={(e) => S().replace({ ...S().p, subtitle: { ...p.subtitle, bilingual: e.target.checked } }, '双语字幕')} />双语（翻译后显示原文）</label>
     </Field>
-    <Field label="画幅与帧率"><div className="note">{p.width}×{p.height} · {p.fps} fps（新建时决定；导出可以另选分辨率）</div></Field>
+    <Field label="风格模板" note="换模板只换卡片和字幕的样子，台词和时长不变，可以撤销"><select value={p.template} onChange={(e) => { const t = templateById(e.target.value); S().edit({ op: 'setTemplate', args: { template: t.id } }, '模板：' + t.name); }}>{TEMPLATE_CATS.map((c) => <optgroup key={c} label={c}>{TEMPLATES.filter((t) => t.cat === c).map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</optgroup>)}</select></Field>
+    <Field label="画幅与帧率" note="导出时还可以另选分辨率">
+      <div className="row"><select value={`${p.width}x${p.height}`} onChange={(e) => { const [w, h] = e.target.value.split('x').map(Number); S().replace({ ...S().p, width: w, height: h }, '画幅'); }}>{[['1920x1080', '16:9 横版'], ['1080x1920', '9:16 竖版'], ['1080x1080', '1:1 方形'], ['1440x1080', '4:3'], ['2560x1080', '21:9 宽银幕']].map(([k, n]) => <option key={k} value={k}>{n} · {k.replace('x', '×')}</option>)}{![`1920x1080`, '1080x1920', '1080x1080', '1440x1080', '2560x1080'].includes(`${p.width}x${p.height}`) && <option value={`${p.width}x${p.height}`}>{p.width}×{p.height}</option>}</select>
+        <select value={p.fps} style={{ width: 90 }} onChange={(e) => S().replace({ ...S().p, fps: +e.target.value }, '帧率')}>{[24, 25, 30, 50, 60].map((x) => <option key={x} value={x}>{x} fps</option>)}</select></div>
+      {(() => { const v = p.assets.find((a) => a.kind === 'video' && a.fps); return v && Math.round(v.fps) !== p.fps ? <button className="btn sm" style={{ marginTop: 6 }} onClick={() => S().replace({ ...S().p, fps: Math.round(v.fps), ...(v.w && v.h ? { width: v.w, height: v.h } : {}) }, '按素材设置')}>按素材「{v.name}」设置（{v.w}×{v.h} · {Math.round(v.fps)} fps）</button> : null; })()}
+    </Field>
   </>;
 }

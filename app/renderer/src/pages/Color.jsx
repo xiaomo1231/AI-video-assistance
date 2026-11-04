@@ -87,7 +87,7 @@ async function matchTo(dir, p, ref, cur) {
   const la = (a[0] + a[1] + a[2]) / 3, lb = (b[0] + b[1] + b[2]) / 3;
   const exposure = +Math.max(-1.5, Math.min(1.5, Math.log2(Math.max(0.02, la) / Math.max(0.02, lb)))).toFixed(3);
   const gain = a.map((v, i) => +Math.max(-0.25, Math.min(0.25, v / Math.max(0.02, la) - b[i] / Math.max(0.02, lb))).toFixed(3));
-  return { ...defGrade(), exposure, gain };
+  return { exposure, gain }; // 只动曝光和亮部色彩，风格、暗部、饱和度等原有调色保留
 }
 
 function Scopes({ shot, g, p, dir }) {

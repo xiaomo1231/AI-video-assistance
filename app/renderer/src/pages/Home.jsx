@@ -4,7 +4,7 @@ import { useStore, S } from '../store.js';
 import { api } from '../api.js';
 import { TEMPLATES, TEMPLATE_CATS, templateById } from '../../../core/templates.js';
 import { SKILL_CATS } from '../../../core/workflow/skills.js';
-import { suggestTemplate } from '../../../core/offline.js';
+import { suggestTemplate, parseNeed } from '../../../core/offline.js';
 import { drawCard } from '../player/cards.js';
 import { startWorkflow } from '../App.jsx';
 import { Modal } from '../components/ui.jsx';
@@ -22,7 +22,8 @@ export async function newProject({ name, template, ratio = '16:9 横版', parent
 
 export default function Home() {
   const info = useStore((s) => s.info); const p = useStore((s) => s.p);
-  const [recent, setRecent] = useState([]); const [skill, setSkill] = useState('promo'); const [cat, setCat] = useState('全部'); const [tpl, setTpl] = useState(null);
+  const [recent, setRecent] = useState([]); const [skill, setSkill] = useState('promo'); const [cat, setCat] = useState('全部'); const [tpl, setTpl] = useState(() => p?.template || null);
+  useEffect(() => { if (p?.template) setTpl(p.template); }, [p?.template]);
   const [lemo, setLemo] = useState(null);
   useEffect(() => { api('project:recent').then(setRecent).catch(() => {}); }, []);
   const skills = [...(info?.skills || []), ...(useStore.getState().settings?.mySkills || []).map((s) => ({ ...s, cat: '我的' }))];
@@ -48,10 +49,10 @@ export default function Home() {
         </div>
       </div>
       <div className="pane" style={{ minWidth: 0 }}>
-        <div className="pane-h">风格模板 <span className="note">{TEMPLATES.length} 个 · 点一下选中，向导和新工程会用它</span></div>
+        <div className="pane-h">风格模板 <span className="note">{TEMPLATES.length} 个 · {p ? `点一下给当前工程「${p.name}」换上（可撤销），向导也用它` : '点一下选中，向导和新工程会用它'}</span></div>
         <div className="chips" style={{ padding: '10px 14px 0' }}>{['全部', ...TEMPLATE_CATS].map((c) => <button key={c} className={'chip' + (cat === c ? ' on' : '')} onClick={() => setCat(c)}>{c}</button>)}</div>
         <div className="scroll"><div className="tpls">{shown.map((t) => (
-          <div key={t.id} className={'tpl' + (tpl === t.id ? ' on' : '')} onClick={() => { setTpl(tpl === t.id ? null : t.id); if (p) S().edit({ op: 'setTemplate', args: { template: t.id } }, '模板：' + t.name); }}>
+          <div key={t.id} className={'tpl' + (tpl === t.id ? ' on' : '')} onClick={() => { if (p) { setTpl(t.id); if (p.template !== t.id) { S().edit({ op: 'setTemplate', args: { template: t.id } }, '模板：' + t.name); S().say(`当前工程换成「${t.name}」，Ctrl+Z 可撤销`); } } else setTpl(tpl === t.id ? null : t.id); }}>
             <div className="im"><TplCanvas t={t} /><span className="tag">{t.cat}</span></div>
             <div className="meta"><b>{t.name}</b><span>{t.line}</span></div>
           </div>))}</div></div>
@@ -74,12 +75,19 @@ function Wizard({ sk, tpl }) {
   const p = useStore((s) => s.p);
   const [v, setV] = useState(() => Object.fromEntries((sk.inputs || []).map((i) => [i.key, i.default ?? ''])));
   const [where, setWhere] = useState(p ? 'cur' : 'new'); const [busy, setBusy] = useState(false);
-  const set = (k, x) => setV({ ...v, [k]: x });
+  const lenTouched = useRef(false);
+  const set = (k, x) => {
+    const nx = { ...v, [k]: x }; if (k === 'len') lenTouched.current = true;
+    // 需求里写了时长、又没手动点过时长按钮时，自动选上对应的按钮
+    if (k === 'need' && !lenTouched.current) { const lenIn = (sk.inputs || []).find((i) => i.key === 'len'); const pn = parseNeed(x); if (lenIn && pn.hasLen) { const o = lenIn.options.find((o) => secOf(o) === pn.len); if (o) nx.len = o; } }
+    setV(nx);
+  };
+  const aiOn = useStore((s) => !!s.settings?.ai?.providers?.find((x) => x.id === s.settings.ai.active));
   const go = async () => {
     setBusy(true);
     try {
       const template = tpl || (v.need || v.doc || v.topic ? suggestTemplate(v.need || v.doc || v.topic) : null) || 'dark-keynote';
-      if (where === 'new' || !p) { const nm = (v.need || v.doc || v.topic || sk.name).split(/[，。,.\n]/)[0].slice(0, 20) || sk.name; const r = await newProject({ name: nm, template, ratio: v.ratio }); if (!r) { setBusy(false); return; } }
+      if (where === 'new' || !p) { const nm = projectName(v, sk); const r = await newProject({ name: nm, template, ratio: v.ratio }); if (!r) { setBusy(false); return; } }
       S().setPage('flow');
       await startWorkflow(sk, { ...v, template });
     } catch (e) { S().say(e.message, true); }
@@ -89,6 +97,7 @@ function Wizard({ sk, tpl }) {
     <div className="pane-h">{sk.star ? '★ ' : ''}{sk.name}</div>
     <div className="scroll">
       <div style={{ padding: '10px 14px', color: 'var(--muted)', fontSize: 13 }}>{sk.desc}</div>
+      {!aiOn && sk.steps.some((s) => s.kind === 'ai') && <div className="warnbox" style={{ margin: '0 14px 8px' }}>还没配 AI，标着 AI 的步骤会改用规则版：先出一版能看的分镜，打回时会列出要改的镜头，由你动手改。<button className="btn sm" style={{ marginLeft: 6 }} onClick={() => S().setPage('settings')}>去配 AI</button></div>}
       {(sk.inputs || []).map((i) => (
         <div className="field" key={i.key}><label>{i.label}</label>
           {i.type === 'select' ? <div className="chips">{i.options.map((o) => <button key={o} className={'chip' + (v[i.key] === o ? ' on' : '')} onClick={() => set(i.key, o)}>{o}</button>)}</div>
@@ -109,6 +118,14 @@ function Wizard({ sk, tpl }) {
     </div>
     <div style={{ padding: 12, borderTop: '1px solid var(--line)' }}><button className="btn pri big" style={{ width: '100%' }} disabled={busy} onClick={go}>{busy ? '启动中…' : '开始'}</button></div>
   </>;
+}
+
+const secOf = (o) => { const m = String(o).match(/(\d+)\s*(分钟|秒)/); return m ? (m[2] === '分钟' ? +m[1] * 60 : +m[1]) : null; };
+const KIND_NAME = { promo: '宣传片', explain: '讲解', ad: '广告', vlog: 'vlog' };
+/** 工程名：需求里有产品名就用「产品名 宣传片」，否则取第一句的前 16 个字 */
+function projectName(v, sk) {
+  if (v.need) { const pn = parseNeed(v.need); if (/[「“"《]/.test(v.need) && pn.name) return `${pn.name} ${KIND_NAME[pn.kind] || sk.name}`; }
+  return (v.need || v.doc || v.topic || sk.name).split(/[，。,.\n]/)[0].trim().slice(0, 16) || sk.name;
 }
 
 function LemoImport({ onClose }) {

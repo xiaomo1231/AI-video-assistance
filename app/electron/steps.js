@@ -10,8 +10,9 @@ import { withIds, uid, newShot } from '../core/project.js';
 import { makeContext, callTool } from '../core/ai/tools.js';
 import { findCuts } from '../core/node/asr.js';
 import { detectBeats, sceneCuts, colorStats, matchGrade } from '../core/node/analyze.js';
-import { snap } from '../core/timing.js';
+import { snap, DEFAULTS } from '../core/timing.js';
 import { abs } from '../core/node/store.js';
+import { friendly, humanError } from '../core/errors.js';
 
 const brief = (ctx) => {
   const i = ctx.inputs || {};
@@ -21,6 +22,16 @@ const brief = (ctx) => {
     ctx.vars.transcript && `参考视频听写：${String(ctx.vars.transcript.text).slice(0, 4000)}`, ctx.vars.cuts && Array.isArray(ctx.vars.cuts) && `参考视频切点（秒）：${ctx.vars.cuts.slice(0, 80).map((x) => x.toFixed?.(1) ?? x).join(', ')}`].filter(Boolean).join('\n');
 };
 const lenSec = (s) => { const m = String(s || '').match(/(\d+)\s*(分钟|秒)/); return m ? (m[2] === '分钟' ? +m[1] * 60 : +m[1]) : 60; };
+
+/** 调 AI；没配或调用失败都返回 null，让步骤退回规则版，并在面板上说一声原因 */
+async function tryAi(ctx, run, fn) {
+  if (!ctx.svc.ai.available()) return null;
+  try { return await fn(); } catch (e) {
+    if (/已取消/.test(e.message)) throw e;
+    run?.emit('info', { text: `AI 调用失败，这一步改用规则版：${friendly(e)}` }); ctx.vars.aiFailed = true; return null;
+  }
+}
+const sid = (p, s) => `S${String(p.shots.indexOf(s) + 1).padStart(2, '0')}`;
 
 /** 用模型或规则版把分镜写进工程 */
 async function writeStoryboard(ctx, sb, label) {
@@ -37,8 +48,16 @@ export function makeSteps() {
     'human.confirm': async (ctx, step, run) => run.ask('confirm', { text: step.desc || step.name }),
 
     'ai.questions': async (ctx, step, run) => {
-      if (!ctx.svc.ai.available()) return { summary: '没配 AI，跳过提问' };
-      const q = await ctx.svc.ai.json(`${brief(ctx)}\n\n你是导演。在动手之前，列出你必须问清楚的问题（最多 5 个，事实、必须出现的名字和产品、口吻、是否有自己的素材）。只输出 JSON：{"questions":["..."]}。如果需求已经足够清楚，输出 {"questions":[]}。`);
+      if (!ctx.svc.ai.available() || ctx.vars.aiFailed) {
+        // 规则版也问几个固定问题，免得产品名、卖点、结尾要求丢掉
+        if (!ctx.inputs?.need) return { summary: '没配 AI，跳过提问' };
+        const qs = ['产品或主角叫什么？', '最想让观众记住的 1~3 个卖点？（用顿号隔开）', '结尾希望观众做什么？例：下载 App、关注账号'];
+        const a = await run.ask('questions', { questions: qs, offline: true });
+        if (a && typeof a === 'object') { ctx.vars.answers = a; const v = Object.values(a).map((x) => String(x || '').trim()); ctx.vars.offline = { name: v[0], points: v[1], cta: v[2] }; }
+        return { summary: '没配 AI，问了 3 个固定问题' };
+      }
+      const q = await tryAi(ctx, run, () => ctx.svc.ai.json(`${brief(ctx)}\n\n你是导演。在动手之前，列出你必须问清楚的问题（最多 5 个，事实、必须出现的名字和产品、口吻、是否有自己的素材）。只输出 JSON：{"questions":["..."]}。如果需求已经足够清楚，输出 {"questions":[]}。`));
+      if (!q) return ctx.vars.aiFailed ? S['ai.questions'](ctx, step, run) : { summary: 'AI 没给出问题，直接往下做' };
       const qs = (q?.questions || []).slice(0, 5);
       if (!qs.length) return { summary: '需求已经清楚，不用问' };
       const answers = await run.ask('questions', { questions: qs });
@@ -46,48 +65,76 @@ export function makeSteps() {
     },
     'ai.treatment': async (ctx, step, run) => {
       let options;
-      if (ctx.svc.ai.available()) { const r = await ctx.svc.ai.json(`${brief(ctx)}\n\n给出三个不同的结构候选。只输出 JSON：{"options":[{"name":"结构名","why":"为什么适合","beats":["第一段做什么", "..."]}]}`); options = r?.options; }
+      { const r = await tryAi(ctx, run, () => ctx.svc.ai.json(`${brief(ctx)}\n\n给出三个不同的结构候选。只输出 JSON：{"options":[{"name":"结构名","why":"为什么适合","beats":["第一段做什么", "..."]}]}`)); options = r?.options; }
       if (!options?.length) options = OFFLINE_TREATMENTS(ctx.inputs?.need || ctx.inputs?.points || ctx.vars.page?.title || '');
       const i = await run.ask('choose', { title: '选一个结构', options });
       return options[typeof i === 'number' ? i : 0];
     },
-    'ai.outline': async (ctx) => {
-      if (ctx.svc.ai.available()) { const r = await ctx.svc.ai.json(`${brief(ctx)}\n\n把内容拆成讲解视频的段落，每段一个知识点和一个比喻。只输出 JSON：{"name":"讲解结构","beats":["..."]}`); if (r?.beats) return r; }
+    'ai.outline': async (ctx, step, run) => {
+      { const r = await tryAi(ctx, run, () => ctx.svc.ai.json(`${brief(ctx)}\n\n把内容拆成讲解视频的段落，每段一个知识点和一个比喻。只输出 JSON：{"name":"讲解结构","beats":["..."]}`)); if (r?.beats) return r; }
       const parts = String(ctx.inputs?.doc || '').split(/\n+|。/).map((s) => s.trim()).filter((s) => s.length > 4).slice(0, 8);
       return { name: '按段落讲解', beats: parts };
     },
-    'ai.structure': async (ctx) => {
-      if (!ctx.svc.ai.available()) { const n = (ctx.vars.cuts || []).length; return { name: '参考结构', beats: [`参考视频共 ${n + 1} 个镜头`, '开头 3 秒钩子', '中段信息', '结尾行动'] }; }
-      return ctx.svc.ai.json(`${brief(ctx)}\n\n拆解参考视频的结构：钩子、节奏、转折、结尾。只学结构，不搬画面和文案。只输出 JSON：{"name":"结构名","beats":["..."],"pace":"平均每镜秒数"}`);
+    'ai.structure': async (ctx, step, run) => {
+      const r = await tryAi(ctx, run, () => ctx.svc.ai.json(`${brief(ctx)}\n\n拆解参考视频的结构：钩子、节奏、转折、结尾。只学结构，不搬画面和文案。只输出 JSON：{"name":"结构名","beats":["..."],"pace":"平均每镜秒数"}`));
+      if (r?.beats) return r;
+      const n = (ctx.vars.cuts || []).length; return { name: '参考结构', beats: [`参考视频共 ${n + 1} 个镜头`, '开头 3 秒钩子', '中段信息', '结尾行动'] };
     },
-    'ai.storyboard': async (ctx) => {
-      const len = lenSec(ctx.inputs?.len);
+    'ai.storyboard': async (ctx, step, run) => {
+      const pn = parseNeed(ctx.inputs?.need || ''); const len = ctx.inputs?.len ? lenSec(ctx.inputs.len) : pn.hasLen ? pn.len : 60;
       const tplHint = ctx.inputs?.template ? `风格模板必须用：${ctx.inputs.template}（${templateById(ctx.inputs.template).name}）` : '';
-      if (ctx.svc.ai.available()) {
-        const p = await ctx.svc.getProject();
-        const r = await ctx.svc.ai.agent({ system: GENERATE_SYSTEM, prompt: `${brief(ctx)}\n${tplHint}\n目标时长约 ${len} 秒。`, project: p });
+      const p0 = await ctx.svc.getProject();
+      const r = await tryAi(ctx, run, () => ctx.svc.ai.agent({ system: GENERATE_SYSTEM, prompt: `${brief(ctx)}\n${tplHint}\n目标时长约 ${len} 秒。`, project: p0 }));
+      if (r) {
         if (r.ops.length) { await ctx.svc.applyOps(r.ops, 'AI 写分镜'); if (ctx.inputs?.template) await ctx.svc.applyOps([{ op: 'setTemplate', args: { template: ctx.inputs.template } }], '模板'); return { text: r.text }; }
       }
-      const sb = offlineStoryboard({ need: ctx.inputs?.need || ctx.inputs?.doc || ctx.inputs?.topic || ctx.vars.page?.title || '我的视频', treatment: ctx.vars.treatment, len });
+      const o = ctx.vars.offline || {};
+      let need = ctx.inputs?.need || ctx.inputs?.doc || ctx.inputs?.topic || ctx.vars.page?.title || '我的视频';
+      if (o.name && !need.includes(o.name)) need = `给「${o.name}」${need}`; if (o.points) need += `，突出${o.points}`;
+      const sb = offlineStoryboard({ need, treatment: ctx.vars.treatment, len, cta: o.cta });
       if (ctx.inputs?.template) sb.template = ctx.inputs.template;
       if (ctx.vars.page?.assets?.length) sb.shots.forEach((s, i) => { if (i > 0 && ctx.vars.page.assets[i - 1]) s.card = { ...s.card, layout: 'image', asset: ctx.vars.page.assets[i - 1] }; });
       return writeStoryboard(ctx, sb, '规则版分镜');
     },
-    health: async (ctx) => { const h = health(await ctx.svc.getProject()); ctx.vars.health = h; const bad = h.filter((x) => x.level !== 'ok'); return { summary: bad.length ? bad.map((x) => x.title).join('、') + ' 需要看一下' : '体检全部通过', health: h }; },
+    health: async (ctx) => { const h = health(await ctx.svc.getProject()); ctx.vars.health = h; const bad = h.filter((x) => x.level === 'warn' || x.level === 'error'); return { summary: bad.length ? bad.map((x) => x.title).join('、') + ' 需要看一下' : '体检全部通过', health: h }; },
     'health.show': async (ctx, step, run) => run.ask('health', { health: ctx.vars.health || health(await ctx.svc.getProject()) }),
-    review: async (ctx, step, run) => { await ctx.svc.focus('board'); return run.ask('review', { text: '看一遍样片。满意点「通过」；不满意就在画面上圈注并写一句，点「带圈注打回」。' }); },
+    review: async (ctx, step, run) => { await ctx.svc.focus('edit'); return run.ask('review', { text: '看一遍样片。满意点「通过」；不满意就在画面上圈注并写一句，点「带意见打回」。' }); },
     'ai.revise': async (ctx, step, run) => {
       const p = await ctx.svc.getProject();
-      const notes = (ctx.vars.reviewNotes || []).join('；');
       const open = (p.annotations || []).filter((a) => !a.done);
-      if (!ctx.svc.ai.available()) { await run.ask('confirm', { text: `没配 AI，请按圈注手动修改：${notes || open.map((a) => a.text).join('；')}。改完点继续。` }); return { summary: '手动修改' }; }
-      const r = await ctx.svc.ai.agent({ prompt: `按审片意见修改。意见：${notes || '见圈注'}。未处理的圈注：${JSON.stringify(open.map((a) => ({ id: a.id, text: a.text, rect: a.rect })))}`, project: p });
-      if (!r.ops.length) return { text: r.text };
-      const ok = await run.ask('proposal', { text: r.text, changes: r.changes });
-      if (ok === false || ok?.apply === false) return { summary: '没有采用' };
-      await ctx.svc.applyOps(r.ops, 'AI 按圈注修改'); return { text: r.text };
+      const general = (ctx.vars.reviewNotes || []).filter((n) => !open.some((a) => a.text === n));
+      const r = await tryAi(ctx, run, () => ctx.svc.ai.agent({ prompt: `按审片意见修改。意见：${(ctx.vars.reviewNotes || []).join('；') || '见圈注'}。未处理的圈注：${JSON.stringify(open.map((a) => ({ id: a.id, shot: a.shot, text: a.text, rect: a.rect })))}`, project: p }));
+      if (r) {
+        if (!r.ops.length) return { text: r.text };
+        const ok = await run.ask('proposal', { text: r.text, changes: r.changes });
+        if (ok === false || ok?.apply === false) return { summary: '没有采用' };
+        await ctx.svc.applyOps(r.ops, 'AI 按圈注修改'); return { text: r.text };
+      }
+      // 规则版：能自动做的先做（整体节奏快慢），其余按镜头列出来，点一下就跳过去
+      const done = [];
+      const pace = general.join('；');
+      const slow = /慢|拖|太长|啰嗦|节奏.*快一?点/.test(pace), fast = /太快|看不清|跟不上|急/.test(pace);
+      if (slow !== fast) {
+        // 节奏：改全片的句间停顿和每镜收尾，所有按台词自动的镜头一起重排
+        const st = { ...DEFAULTS, ...p.settings }; const k = slow ? 0.6 : 1.5;
+        const patch = { gap: +Math.max(0.05, st.gap * k).toFixed(2), tail: +Math.max(0.2, st.tail * k).toFixed(2), lead: +Math.max(0.1, st.lead * k).toFixed(2) };
+        const before = p.duration; await ctx.svc.applyOps([{ op: 'setSettings', args: { patch } }], slow ? '节奏加快' : '节奏放慢');
+        const after = (await ctx.svc.getProject()).duration;
+        done.push(`${slow ? '节奏加快' : '节奏放慢'}：句间停顿 ${st.gap}→${patch.gap} 秒，镜尾 ${st.tail}→${patch.tail} 秒，全片 ${before.toFixed(1)}→${after.toFixed(1)} 秒`);
+      }
+      const items = open.map((a) => { const s = p.shots.find((x) => x.id === a.shot); return { anno: a.id, shot: a.shot, label: s ? `${sid(p, s)} ${s.title}` : '镜头', text: a.text }; });
+      for (const n of general) { if ((slow !== fast) && /慢|拖|太快|看不清|跟不上|急|节奏/.test(n) && !/第\s*\d+\s*镜|S0?\d+/i.test(n)) continue; const m = n.match(/第\s*(\d+)\s*镜|S0?(\d+)/i); const s = m ? p.shots[+(m[1] || m[2]) - 1] : null; items.push({ shot: s?.id, label: s ? `${sid(p, s)} ${s.title}` : '整体', text: n }); }
+      if (!items.length && !done.length) return { summary: '没有要改的意见' };
+      await ctx.svc.focus('edit');
+      await run.ask('fix', { text: '没配 AI，下面这些要你动手改。点一条跳到那一镜，改完点「已处理」，全部改好点「改好了，再审一遍」。', items, done });
+      return { summary: `手动修改 ${items.length} 处${done.length ? '，自动：' + done.join('；') : ''}` };
     },
-    'tts.all': async (ctx, step, run) => { const r = await ctx.svc.tts.all((d) => run.emit('progress', d)); return { summary: `配音 ${r.done} 句${r.failed ? `，${r.failed} 句失败：${r.error}` : ''}` }; },
+    'tts.all': async (ctx, step, run) => {
+      const r = await ctx.svc.tts.all((d) => run.emit('progress', d));
+      if (r.failed && !r.done) throw humanError(`${r.failed} 句配音全部没做出来：${r.error}`); // 让引擎停下来问：重试 / 跳过 / 停止
+      if (r.failed) run.emit('info', { text: `有 ${r.failed} 句配音没做出来，成片里这几句没有人声：${r.error}` });
+      return { summary: r.done + r.failed === 0 ? '每句都已经有配音' : `配音 ${r.done} 句${r.failed ? `，${r.failed} 句失败` : ''}`, warn: r.failed > 0 };
+    },
     'asr.check': async (ctx) => { if (!(await ctx.svc.asr.available())) return { summary: '没装听写（设置 → 听写），跳过' }; const r = await ctx.svc.asr.checkAll(); return { summary: `听写校验：${r.pass} 句通过，${r.fail} 句对不上` }; },
     'music.bed': async (ctx) => {
       const p = await ctx.svc.getProject(); const t = templateById(p.template);
@@ -101,7 +148,7 @@ export function makeSteps() {
       for (const t of p.texts) if (['burst', 'tag'].includes(t.style) && !p.sfx.some((x) => x.anchor === t.anchor && Math.abs(x.off - t.off) < 0.1)) ops.push({ op: 'addSfx', args: withIds('addSfx', { anchor: t.anchor, off: t.off, synth: 'pop', name: '弹出', gain: -16 }) });
       if (ops.length) await ctx.svc.applyOps(ops, '自动音效'); return { summary: `加了 ${ops.length} 个音效` };
     },
-    export: async (ctx, step, run) => { const r = await ctx.svc.export((d) => run.emit('progress', d)); ctx.vars.output = r; return { summary: `已导出 ${path.basename(r.out)}（${Math.round(r.dur)} 秒）`, out: r.out }; },
+    export: async (ctx, step, run) => { const r = await ctx.svc.export((d) => run.emit('progress', d)); ctx.vars.output = r; return { summary: `已导出 ${path.basename(r.out)}（${Math.round(r.dur)} 秒），已存一版`, out: r.out }; },
 
     'capture.url': async (ctx) => { const r = await ctx.svc.capture(ctx.inputs.url); ctx.vars.page = r; return { summary: r.title, ...r }; },
     'media.import': async (ctx) => {
@@ -144,9 +191,9 @@ export function makeSteps() {
       await ctx.svc.applyOps(ops, '去口误和停顿'); const saved = (ctx.vars.cuts || []).reduce((s, c) => s + c.t1 - c.t0, 0);
       return { summary: `剪掉 ${ctx.vars.cuts.length} 处，省下 ${saved.toFixed(1)} 秒` };
     },
-    'ai.highlights': async (ctx) => {
+    'ai.highlights': async (ctx, step, run) => {
       const n = +ctx.inputs?.n || 3; const segs = ctx.vars.transcript?.segments || [];
-      if (ctx.svc.ai.available() && segs.length) { const r = await ctx.svc.ai.json(`下面是长视频的分段听写（秒）。找出 ${n} 段最适合做 30~60 秒竖版短视频的高光：信息密度高、有情绪、开头能抓人、能独立成立。只输出 JSON：{"highlights":[{"t0":0,"t1":0,"title":"不超过14字的标题","why":""}]}\n${segs.map((s) => `[${s.t0.toFixed(1)}-${s.t1.toFixed(1)}] ${s.text}`).join('\n').slice(0, 24000)}`); if (r?.highlights?.length) return r.highlights; }
+      if (segs.length) { const r = await tryAi(ctx, run, () => ctx.svc.ai.json(`下面是长视频的分段听写（秒）。找出 ${n} 段最适合做 30~60 秒竖版短视频的高光：信息密度高、有情绪、开头能抓人、能独立成立。只输出 JSON：{"highlights":[{"t0":0,"t1":0,"title":"不超过14字的标题","why":""}]}\n${segs.map((s) => `[${s.t0.toFixed(1)}-${s.t1.toFixed(1)}] ${s.text}`).join('\n').slice(0, 24000)}`)); if (r?.highlights?.length) return r.highlights; }
       // 规则版：按 45 秒窗口的字数密度
       const out = []; const win = 45; const total = segs.length ? segs[segs.length - 1].t1 : 0;
       const dens = []; for (let t = 0; t + win <= total + 1; t += 5) { const txt = segs.filter((s) => s.t0 >= t && s.t1 <= t + win).map((s) => s.text).join(''); dens.push({ t0: t, t1: t + win, score: txt.length, title: txt.slice(0, 14) }); }
@@ -187,9 +234,9 @@ export function makeSteps() {
       for (const who of Object.keys(p.speakers)) ops.push({ op: 'setSpeaker', args: { who, voice: { provider: 'edge', voice: VO[lang] || VO.英语 } } });
       await ctx.svc.applyOps(ops, `翻译成${lang}`); return { summary: `翻译 ${ops.length} 句` };
     },
-    'ai.keyphrases': async (ctx) => {
+    'ai.keyphrases': async (ctx, step, run) => {
       const p = await ctx.svc.getProject();
-      if (ctx.svc.ai.available()) { const r = await ctx.svc.ai.json(`从这些台词里挑出最值得加花字强调的 3~8 处（数字、结论、反转、口号）。只输出 JSON：{"items":[{"line":"L3","text":"花字内容，不超过8字"}]}\n${p.lines.map((l, i) => `L${i + 1} ${l.text}`).join('\n')}`); if (r?.items) { ctx.vars.keyphrases = r.items; return { summary: `${r.items.length} 处` }; } }
+      { const r = await tryAi(ctx, run, () => ctx.svc.ai.json(`从这些台词里挑出最值得加花字强调的 3~8 处（数字、结论、反转、口号）。只输出 JSON：{"items":[{"line":"L3","text":"花字内容，不超过8字"}]}\n${p.lines.map((l, i) => `L${i + 1} ${l.text}`).join('\n')}`)); if (r?.items) { ctx.vars.keyphrases = r.items; return { summary: `${r.items.length} 处` }; } }
       ctx.vars.keyphrases = p.lines.map((l, i) => ({ line: `L${i + 1}`, text: (l.text.match(/\d+[%×倍万亿]?|[^，。！？]{2,8}[！!]/) || [])[0] })).filter((x) => x.text).slice(0, 6);
       return { summary: `${ctx.vars.keyphrases.length} 处` };
     },
@@ -215,9 +262,9 @@ export function makeSteps() {
       const s = withIds('addShot', { shot: { title: ctx.inputs?.title || '数据', minDur: 5, src: { kind: 'card', in: 0, card: { layout: 'chart', heading: ctx.inputs?.title || '', labels, values } } } });
       await ctx.svc.applyOps([{ op: 'addShot', args: s }], '图表镜头'); ctx.vars.chartShot = s.shot.id; ctx.vars.chart = { labels, values }; return { summary: `${rows.length} 个数据点` };
     },
-    'ai.chartline': async (ctx) => {
+    'ai.chartline': async (ctx, step, run) => {
       const { labels, values } = ctx.vars.chart; let text;
-      if (ctx.svc.ai.available()) { const r = await ctx.svc.ai.json(`用一句不超过 26 字的中文口语解读这组数据：${labels.map((l, i) => `${l}:${values[i]}`).join('，')}。只输出 JSON：{"text":""}`); text = r?.text; }
+      { const r = await tryAi(ctx, run, () => ctx.svc.ai.json(`用一句不超过 26 字的中文口语解读这组数据：${labels.map((l, i) => `${l}:${values[i]}`).join('，')}。只输出 JSON：{"text":""}`)); text = r?.text; }
       if (!text) { const a = values[0], b = values[values.length - 1]; text = `从${labels[0]}到${labels[labels.length - 1]}，${b >= a ? '增长' : '下降'}了 ${Math.abs(Math.round(((b - a) / (a || 1)) * 100))}%。`; }
       await ctx.svc.applyOps([{ op: 'addLine', args: withIds('addLine', { shot: ctx.vars.chartShot, text }) }], '图表解读'); return { summary: text };
     },

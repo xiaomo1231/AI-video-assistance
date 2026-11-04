@@ -109,7 +109,7 @@ export class Player {
       v.el.style.objectFit = src.fit === 'contain' ? 'contain' : 'cover';
       if (exact) {
         await v.ready;
-        if (Math.abs(v.el.currentTime - srcT) > 0.001) await new Promise((r) => { const done = () => { v.el.removeEventListener('seeked', done); r(); }; v.el.addEventListener('seeked', done); v.el.currentTime = srcT; setTimeout(done, 3000); });
+        if (Math.abs(v.el.currentTime - srcT) > 0.001) await new Promise((r) => { const done = () => { v.el.removeEventListener('seeked', done); r(); }; v.el.addEventListener('seeked', done); v.el.currentTime = srcT + 0.002; setTimeout(done, 3000); }); // 稍微越过帧边界，免得浮点误差取到上一帧
         if (v.el.requestVideoFrameCallback) await new Promise((r) => { v.el.requestVideoFrameCallback(() => r()); setTimeout(r, 120); });
       } else if (this.playing) {
         v.el.playbackRate = speed; if (v.el.paused) v.el.play().catch(() => {});
@@ -122,13 +122,14 @@ export class Player {
     const c = slot.ctx; const W = p.width, H = p.height; c.setTransform(this.outW / W, 0, 0, this.outH / H, 0, 0); c.clearRect(0, 0, W, H);
     if (src.kind === 'media' && asset && asset.kind === 'image') {
       const im = this.image(asset.path); if (exact) await im.ready;
-      const el = im.el; if (el.naturalWidth) { const k = clamp(local / Math.max(0.5, s.dur)); const z = /拉/.test(s.camera || '') ? 1.08 - 0.08 * k : 1 + 0.08 * k; const sc = (src.fit === 'contain' ? Math.min : Math.max)(W / el.naturalWidth, H / el.naturalHeight) * z; c.fillStyle = '#000'; c.fillRect(0, 0, W, H); c.drawImage(el, (W - el.naturalWidth * sc) / 2, (H - el.naturalHeight * sc) / 2, el.naturalWidth * sc, el.naturalHeight * sc); }
+      const el = im.el; if (el.naturalWidth) { const k = clamp(((src.in || 0) + local) / Math.max(0.5, (src.in || 0) + s.dur)); const z = /拉/.test(s.camera || '') ? 1.08 - 0.08 * k : 1 + 0.08 * k; const sc = (src.fit === 'contain' ? Math.min : Math.max)(W / el.naturalWidth, H / el.naturalHeight) * z; c.fillStyle = '#000'; c.fillRect(0, 0, W, H); c.drawImage(el, (W - el.naturalWidth * sc) / 2, (H - el.naturalHeight * sc) / 2, el.naturalWidth * sc, el.naturalHeight * sc); }
       return;
     }
     const card = src.card || {}; let img = null;
     const imgAsset = card.asset && p.assets.find((a) => a.id === card.asset);
     if (imgAsset) { const im = this.image(imgAsset.path); if (exact) await im.ready; if (im.el.naturalWidth) img = im.el; }
-    drawCard(c, { W, H, tpl: this.tpl, card, shot: s, local, dur: s.dur, img });
+    // 分割或左裁后 src.in 记着已经播过的部分，动画接着往下走，不从头再来
+    drawCard(c, { W, H, tpl: this.tpl, card, shot: s, local: (src.in || 0) + local, dur: (src.in || 0) + s.dur, img });
   }
 
   async frame(t, exact = false) {

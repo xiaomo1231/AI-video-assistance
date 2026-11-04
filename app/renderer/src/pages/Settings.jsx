@@ -24,7 +24,9 @@ function AiTab() {
   useEffect(() => { setList(s?.ai?.providers || []); }, [s]);
   useEffect(() => { api('ai:cli').then(setCli).catch(() => setCli({})); }, []);
   const presets = info?.presets || [];
-  const add = (pre) => { const id = 'ai' + Date.now().toString(36); const n = pre === 'cli' ? { id, preset: 'cli', proto: 'cli', cli: 'claude', name: 'Claude Code（CLI 登录）' } : { id, preset: pre.id, name: pre.name, proto: pre.proto, baseUrl: pre.baseUrl, model: pre.model, priceIn: 0, priceOut: 0, limit: 0 }; const l = [...list, n]; setList(l); persist(l, s.ai.active || id); };
+  // 新加的接口先不启用：CLI 找到了才直接用，填 Key 的要测试通过再用
+  const add = (pre, cliKey = 'claude') => { const id = 'ai' + Date.now().toString(36); const n = pre === 'cli' ? { id, preset: 'cli', proto: 'cli', cli: cliKey, name: (info?.clis?.[cliKey]?.name || 'Claude Code') + '（CLI 登录）' } : { id, preset: pre.id, name: pre.name, proto: pre.proto, baseUrl: pre.baseUrl, model: pre.model, priceIn: 0, priceOut: 0, limit: 0 }; const l = [...list, n]; setList(l); persist(l, s.ai.active || (pre === 'cli' && cli?.[cliKey]?.path ? id : null)); if (pre !== 'cli') S().say('填好 Key 点「测试」，通过后就会用它'); };
+  const found = Object.entries(cli || {}).filter(([, v]) => v?.path).map(([k]) => k);
   const persist = async (l, active) => { await save({ ai: { providers: l.map((x) => ({ ...x, key: keys[x.id] || '' })), active } }); setKeys({}); };
   const upd = (id, patch) => setList(list.map((x) => (x.id === id ? { ...x, ...patch } : x)));
   return <>
@@ -33,7 +35,7 @@ function AiTab() {
       <div key={x.id} className="field" style={{ background: s.ai.active === x.id ? 'rgba(240,138,60,.06)' : '' }}>
         <div className="row" style={{ marginBottom: 8 }}><input value={x.name} onChange={(e) => upd(x.id, { name: e.target.value })} style={{ fontWeight: 600 }} />
           {s.ai.active === x.id ? <span className="tag ai">正在用</span> : <button className="btn sm" onClick={() => persist(list, x.id)}>用这个</button>}
-          <button className="btn sm" onClick={async () => { await persist(list, s.ai.active); setTest({ ...test, [x.id]: '测试中…' }); try { const r = await api('ai:test', x.id); setTest({ ...test, [x.id]: '✓ ' + (r.text || '连通') }); } catch (e) { setTest({ ...test, [x.id]: '✕ ' + e.message }); } }}>测试</button>
+          <button className="btn sm" onClick={async () => { await persist(list, s.ai.active); setTest({ ...test, [x.id]: '测试中…' }); try { const r = await api('ai:test', x.id); setTest({ ...test, [x.id]: '✓ ' + (r.text || '连通') }); if (!s.ai.active || s.ai.active !== x.id) await persist(list, x.id); } catch (e) { const off = useStore.getState().settings?.ai?.active === x.id; setTest({ ...test, [x.id]: '✕ ' + e.message + (off ? '。已先停用，修好后再测试' : '') }); if (off) await persist(list, null); } }}>测试</button>
           <button className="btn sm ghost" onClick={() => { const l = list.filter((y) => y.id !== x.id); setList(l); persist(l, s.ai.active === x.id ? l[0]?.id || null : s.ai.active); }}>删除</button></div>
         {x.proto === 'cli' ? <div className="grid2">
           <div><label>CLI</label><select value={x.cli} onChange={(e) => upd(x.id, { cli: e.target.value, name: info.clis[e.target.value].name + '（CLI 登录）' })}>{Object.entries(info?.clis || {}).map(([k, c]) => <option key={k} value={k}>{c.name}</option>)}</select></div>
@@ -48,6 +50,8 @@ function AiTab() {
         </div>}
         <div className="row" style={{ marginTop: 8 }}><button className="btn sm pri" onClick={() => persist(list, s.ai.active).then(() => S().say('已保存'))}>保存</button><span className="note">{test[x.id]}</span></div>
       </div>))}
+    {found.length > 0 && !list.some((x) => x.proto === 'cli') && <div className="field" style={{ background: 'rgba(92,194,138,.07)' }}><b>推荐：用本机已经登录的 CLI</b><div className="note" style={{ margin: '4px 0 6px' }}>不用填 Key，走你自己的订阅，不额外花钱。</div><div className="row">{found.map((k) => <button key={k} className="btn sm pri" onClick={() => add('cli', k)}>用 {info?.clis?.[k]?.name || k}</button>)}</div></div>}
+    {!found.length && !list.length && <div className="note" style={{ padding: '0 14px 8px' }}>推荐顺序：① 装了 Claude Code / Codex 就用「CLI 登录」，不用 Key；② 买了国内 Coding Plan（智谱、Kimi、通义等）用对应的那一项，Key 在对方控制台的「API Key」页面；③ 想完全离线用本地 Ollama。</div>}
     <div className="field"><label>添加</label><div className="chips">
       <button className="chip" onClick={() => add('cli')}>CLI 登录（Claude Code / Codex / Gemini / Qwen）</button>
       {presets.map((p) => <button key={p.id} className="chip" onClick={() => add(p)} title={p.note}>{p.name}</button>)}

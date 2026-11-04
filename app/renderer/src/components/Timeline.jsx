@@ -4,6 +4,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useStore, S } from '../store.js';
 import { tc, absT, subT, shotAt, overflow, snap } from '../../../core/timing.js';
 import { Wave, sid } from './ui.jsx';
+import { maxDur } from '../../../core/project.js';
 
 const ROWS = [
   { k: 'tx', name: '文字', h: 26 },
@@ -60,9 +61,9 @@ export default function Timeline({ height = 300 }) {
     S().live((q) => {
       const x = findIn(q, d.kind, d.id); if (!x) return;
       if (d.kind === 'shot') {
-        if (d.mode === 'r') { x.dur = snap(Math.max(1 / fps, snapT(o.t0 + o.dur + dt, o.t0 + o.dur) - o.t0), fps); x.lock = true; }
-        else if (d.mode === 'l') { const k = Math.min(o.dur - 1 / fps, Math.max(-(o.src.in || 0) / (o.speed || 1), dt)); x.src = { ...o.src, in: Math.max(0, (o.src.in || 0) + k * (o.speed || 1)) }; x.dur = snap(o.dur - k, fps); x.lock = true; }
-        else { x.t0 = snap(Math.max(0, snapT(o.t0 + dt, o.t0)), fps); }
+        if (d.mode === 'r') { const m = maxDur(b, o); x.dur = snap(Math.max(1 / fps, snapT(o.t0 + o.dur + dt, o.t0 + o.dur) - o.t0), fps); if (m != null && x.dur > m) x.dur = snap(m, fps); x.lock = true; }
+        else if (d.mode === 'l') { const k = snap(Math.min(o.dur - 1 / fps, Math.max(-(o.src.in || 0) / (o.speed || 1), snapT(o.t0 + dt, o.t0) - o.t0)), fps); x.src = { ...o.src, in: Math.max(0, (o.src.in || 0) + k * (o.speed || 1)) }; x.dur = snap(o.dur - k, fps); x.lock = true; }
+        else { x.t0 = snap(Math.max(0, snapT(o.t0 + dt, o.t0)), fps); q.shots.sort((a, c) => a.t0 - c.t0); } // 关磁吸时按位置重排，重新打开磁吸也保持这个先后
       } else if (d.kind === 'line') {
         const T = snapT(absT(b, o) + dt, absT(b, o)); const a = anchorAt(b, T); const diff = o.soff - o.off;
         x.shot = a.anchor; x.off = a.off; x.soff = snap(a.off + diff, fps); x.pin = true;
@@ -100,10 +101,17 @@ export default function Timeline({ height = 300 }) {
     freeze: () => selShot && S().edit({ op: 'freeze', args: { id: selShot.id, sec: 2 } }, '定格 2 秒'),
     auto: () => selShot && S().edit({ op: 'setLock', args: { id: selShot.id, lock: false } }, '时长按台词自动'),
     text: () => { const a = anchorAt(p, t); S().edit({ op: 'addText', args: { ...a, text: '花字', style: 'tag' } }, '加文字'); },
-    sfx: () => { const a = anchorAt(p, t); S().edit({ op: 'addSfx', args: { ...a, synth: 'pop', name: 'pop' } }, '加音效'); },
+    sfx: () => { const a = anchorAt(p, t); S().edit({ op: 'addSfx', args: { ...a, synth: 'pop', name: S().info?.sfx?.pop?.name || S().info?.sfx?.pop || '弹出' } }, '加音效'); },
     fit: () => { const w = sc.current?.clientWidth || 1000; setPps(Math.max(4, Math.min(400, (w - 40) / Math.max(1, p.duration)))); },
   };
   useEffect(() => { act.fit(); }, [p.shots.length === 0]);
+  // Ctrl+滚轮缩放；React 的 onWheel 是被动监听，不能 preventDefault
+  useEffect(() => {
+    const el = sc.current; if (!el) return;
+    const fn = (e) => { if (e.ctrlKey || e.metaKey || e.altKey) { e.preventDefault(); const k = e.deltaY < 0 ? 1.15 : 1 / 1.15; setPps((v) => Math.max(4, Math.min(400, v * k))); } else if (Math.abs(e.deltaY) > Math.abs(e.deltaX) && !e.shiftKey) { e.preventDefault(); el.scrollLeft += e.deltaY; } };
+    el.addEventListener('wheel', fn, { passive: false }); return () => el.removeEventListener('wheel', fn);
+  }, []);
+  const voOrder = useMemo(() => { const m = new Map(); [...p.lines].sort((a, b) => absT(p, a) - absT(p, b)).forEach((l, i) => m.set(l.id, i + 1)); return m; }, [p]);
 
   return (
     <div className="tl" style={{ height }}>
@@ -122,7 +130,7 @@ export default function Timeline({ height = 300 }) {
         <button className={'ib' + (p.settings.magnet !== false ? ' on' : '')} onClick={() => S().edit({ op: 'setSettings', args: { patch: { magnet: p.settings.magnet === false } } }, p.settings.magnet === false ? '磁吸开' : '磁吸关')} title="主轨磁吸：镜头首尾相接，没有空隙">🧲 磁吸</button>
         <button className={'ib' + (p.settings.snap !== false ? ' on' : '')} onClick={() => S().edit({ op: 'setSettings', args: { patch: { snap: p.settings.snap === false } } }, '吸附')} title="拖动时吸附到镜头边和播放头">⌖ 吸附</button>
         <button className="ib" onClick={() => setPps(Math.max(4, pps / 1.4))}>－</button>
-        <input type="range" min={4} max={400} value={pps} onChange={(e) => setPps(+e.target.value)} style={{ width: 100 }} />
+        <input type="range" min={4} max={400} value={pps} onChange={(e) => setPps(+e.target.value)} onPointerUp={(e) => e.currentTarget.blur()} style={{ width: 100 }} />
         <button className="ib" onClick={() => setPps(Math.min(400, pps * 1.4))}>＋</button>
         <button className="ib" onClick={act.fit}>适合</button>
       </div>
@@ -137,7 +145,6 @@ export default function Timeline({ height = 300 }) {
           ))}
         </div>
         <div className="tl-scroll" ref={sc}
-          onWheel={(e) => { if (e.ctrlKey || e.metaKey) { e.preventDefault(); const k = e.deltaY < 0 ? 1.15 : 1 / 1.15; setPps(Math.max(4, Math.min(400, pps * k))); } }}
           onPointerMove={(e) => setHover(tAt(e))} onPointerLeave={() => setHover(null)}>
           <div className="tl-inner" style={{ width: W }}>
             <Ruler p={p} pps={pps} W={W} onSeek={(x) => seek(x)} tAt={tAt} />
@@ -162,7 +169,7 @@ export default function Timeline({ height = 300 }) {
             {/* 配音 */}
             <div className="track" style={{ height: ROWS[2].h, opacity: muted.vo ? 0.4 : 1 }}>
               {p.lines.filter((l) => !l.subOnly).map((l) => (
-                <Clip key={l.id} cls={'vo' + (l.status === 'stale' ? ' stale' : '')} x={xOf(absT(p, l))} w={xOf(l.dur)} sel={sel?.id === l.id && sel.kind === 'line'} name={`${p.lines.indexOf(l) + 1}. ${l.text}`}
+                <Clip key={l.id} cls={'vo' + (l.status === 'stale' ? ' stale' : '') + (l.audio ? '' : ' est')} x={xOf(absT(p, l))} w={xOf(l.dur)} sel={sel?.id === l.id && sel.kind === 'line'} name={`${voOrder.get(l.id)}. ${l.audio ? '' : '（未配音）'}${l.text}`}
                   wave={l.audio} onDown={(e, m) => start(e, 'line', l, m)} title={`${l.who}：${l.text}\n${l.audio ? '已配音' : '估算时长'}${l.status === 'stale' ? '（文字改过，需重配）' : ''}${l.pin ? '\n位置已固定' : ''}`} />
               ))}
             </div>
@@ -188,6 +195,9 @@ export default function Timeline({ height = 300 }) {
   );
 }
 
+// 章节标签：同名的相邻镜头合成一段，宽度只到下一段为止，不再互相压住
+function chapters(p) { const out = []; for (const [i, s] of p.shots.entries()) if (s.chapter && (i === 0 || p.shots[i - 1].chapter !== s.chapter)) out.push({ id: s.id, name: s.chapter, t0: s.t0 }); return out; }
+
 function Ruler({ p, pps, W, onSeek, tAt }) {
   const stepS = [0.5, 1, 2, 5, 10, 15, 30, 60, 120].find((s) => s * pps >= 70) || 300;
   const ticks = []; for (let s = 0; s * pps < W; s += stepS) ticks.push(s);
@@ -195,7 +205,7 @@ function Ruler({ p, pps, W, onSeek, tAt }) {
   return (
     <div className="ruler" onPointerDown={down}>
       {ticks.map((s) => <React.Fragment key={s}><div className="tk" style={{ left: s * pps, height: 10 }} /><div className="lb" style={{ left: s * pps }}>{stepS < 1 ? tc(s, p.fps).slice(3) : tc(s, p.fps).slice(3, 8)}</div></React.Fragment>)}
-      {p.shots.filter((s, i) => s.chapter && (i === 0 || p.shots[i - 1].chapter !== s.chapter)).map((s) => <div key={s.id} className="chap" style={{ left: s.t0 * pps }}>{s.chapter}</div>)}
+      {chapters(p).map((c, i, a) => <div key={c.id} className="chap" title={c.name} style={{ left: c.t0 * pps, maxWidth: Math.max(0, ((a[i + 1]?.t0 ?? p.duration) - c.t0) * pps - 6) }}>{c.name}</div>)}
     </div>
   );
 }

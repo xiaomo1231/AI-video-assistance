@@ -81,16 +81,19 @@ if (!process.env.SKIP_WF) {
     const info = window.__mj.store.getState().info; const wf = info.skills.find((s) => s.id === 'promo');
     await window.__mj.startWorkflow(wf, { need: '给一款记账 App 做 30 秒宣传片，突出语音记账', len: '30 秒', ratio: '16:9 横版', template: 'whiteboard' });
   }, d3);
-  const answers = { choose: 0, review: { verdict: 'pass' }, confirm: true, health: true, proposal: true, error: '跳过' };
-  let shotTaken = false;
+  const answers = { choose: 0, review: { verdict: 'pass' }, confirm: true, health: true, proposal: true, error: '跳过', questions: { '产品或主角叫什么？': '小账本', '最想让观众记住的 1~3 个卖点？（用顿号隔开）': '语音记账、自动分类', '结尾希望观众做什么？例：下载 App、关注账号': '下载 App' }, fix: true };
+  let shotTaken = false; let reviews = 0;
   for (let i = 0; i < 600; i++) {
     const run = await st(() => window.__mj.store.getState().run);
     if (i % 20 === 0) console.log('工作流', run?.state, run?.status?.join(' '), run?.waiting?.kind || '');
-    if (['done', 'error', 'cancelled'].includes(run?.state)) { console.log('工作流结束', run.state, JSON.stringify(run.results)); if (run.state !== 'done') errors.push('工作流没有完成：' + run.state); break; }
+    if (['done', 'error', 'cancelled'].includes(run?.state)) { console.log('工作流结束', run.state, JSON.stringify(run.results), run.out); if (run.state !== 'done') errors.push('工作流没有完成：' + run.state); if (!run.out) errors.push('工作流完成后没有成片路径'); if (reviews < 2) errors.push('审片打回后没有回到审片'); break; }
     if (run?.waiting) {
       if (run.waiting.kind === 'review' && !shotTaken) { shotTaken = true; await shot('12-wf-review'); }
       if (run.waiting.kind === 'error') console.log('步骤出错，跳过：', run.waiting.payload.step, run.waiting.payload.error);
-      await st(([id, a]) => window.mojian.invoke('workflow:respond', id, a), [run.id, answers[run.waiting.kind] ?? true]);
+      if (run.waiting.kind === 'fix') { await shot('12b-wf-fix'); console.log('手动修改清单', JSON.stringify(run.waiting.payload.items), run.waiting.payload.done); }
+      // 第一次审片带意见打回，走一遍规则版修改，第二次通过
+      const a = run.waiting.kind === 'review' ? (reviews++ ? { verdict: 'pass' } : { verdict: 'fail', notes: ['整体节奏有点慢', '第 2 镜标题太长'] }) : answers[run.waiting.kind] ?? true;
+      await st(([id, a]) => window.mojian.invoke('workflow:respond', id, a), [run.id, a]);
     }
     await win.waitForTimeout(500);
   }

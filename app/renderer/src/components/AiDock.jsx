@@ -61,11 +61,11 @@ export default function AiDock() {
         ))}
         {busy && <div className="msg tool">思考中… <button className="btn sm ghost" onClick={() => api('ai:cancel', busy)}>停止</button></div>}
       </div>
-      <div className="quick">{QUICK.map((q) => <button key={q} onClick={() => send(q)}>{q}</button>)}</div>
+      <div className="quick">{QUICK.map((q) => <button key={q} disabled={!active} title={active ? '' : '先在设置里配一个 AI'} onClick={() => send(q)}>{q}</button>)}</div>
       <div className="ask">
         <textarea rows={3} placeholder="说一句要改什么。Enter 发送，Shift+Enter 换行" value={input} onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => { e.stopPropagation(); if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } }} />
-        <div className="row" style={{ marginTop: 6 }}><span className="note">会把当前镜头和选中的东西一起告诉 AI</span><span className="spacer" /><button className="btn pri sm" disabled={!!busy || !input.trim()} onClick={() => send()}>发送</button></div>
+        <div className="row" style={{ marginTop: 6 }}><span className="note">会把当前镜头和选中的东西一起告诉 AI</span><span className="spacer" /><button className="btn pri sm" disabled={!!busy || !input.trim() || !active} title={active ? '' : '先在设置里配一个 AI'} onClick={() => send()}>发送</button></div>
       </div>
     </div>
   );

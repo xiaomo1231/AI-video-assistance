@@ -11,7 +11,8 @@ export function parseNeed(need = '') {
   const focus = (s.match(/(突出|强调|讲|介绍|说明)(.{2,30}?)([，。,.]|$)/) || [])[2] || '';
   const kind = /讲解|科普|教程|课程|知识/.test(s) ? 'explain' : /广告|种草|带货|商品/.test(s) ? 'ad' : /vlog|日常|旅行/i.test(s) ? 'vlog' : 'promo';
   const len = +(s.match(/(\d+)\s*分钟/) || [])[1] * 60 || +(s.match(/(\d+)\s*秒/) || [])[1] || 60;
-  return { name: name.trim(), focus: focus.trim(), kind, len };
+  const hasLen = /(\d+)\s*(分钟|秒)/.test(s);
+  return { name: name.trim(), focus: focus.trim(), kind, len, hasLen };
 }
 
 export function suggestTemplate(need) {
@@ -31,8 +32,11 @@ export const OFFLINE_TREATMENTS = (need) => {
 };
 
 /** 规则版分镜：按结构拆镜头，写卡片和台词 */
-export function offlineStoryboard({ need, treatment, len = 60 }) {
+export function offlineStoryboard({ need, treatment, len = 60, cta }) {
   const { name, focus } = parseNeed(need);
+  // 结尾行动：问到的优先，其次是需求里的「引导下载 / 结尾引导关注」
+  const act = (cta || (need.match(/引导(?:用户|观众|大家)?(.{1,10}?)(?:[，。,.！!]|$)/) || [])[1] || '').trim().replace(/^去/, '');
+  const end = (def) => (act ? (/^(现在|马上|立即)/.test(act) ? act : `现在就${act}`) : def);
   const t = treatment || OFFLINE_TREATMENTS(need)[0];
   const seed = hash(need);
   const hooks = [`你有没有过这样的时候？`, `先问你一个问题。`, `如果只给你一秒钟——`, `这件事，大多数人都做错了。`];
@@ -43,20 +47,20 @@ export function offlineStoryboard({ need, treatment, len = 60 }) {
     add('开场', { layout: 'title', heading: `关于${name}`, body: '你要知道的三件事' }, [pick(hooks, seed), `关于${name}，你只需要记住三件事。`], '开场');
     feats.forEach((f, i) => add(`第${i + 1}件`, { layout: 'number', heading: String(i + 1), body: f }, [`第${'一二三'[i]}件：${f}。`], `第 ${i + 1} 件`));
     add('总结', { layout: 'bullets', heading: '记住这三点', bullets: feats }, ['就这三件事，记住了吗？']);
-    add('落版', { layout: 'end', heading: name, body: '现在就试试' }, [`${name}，现在就试试。`], '结尾');
+    add('落版', { layout: 'end', heading: name, body: end('现在就试试') }, [`${name}，${end('现在就试试')}。`], '结尾');
   } else if (/一天|故事/.test(t.name)) {
     add('早上', { layout: 'statement', heading: '早上 8:00', body: '又是手忙脚乱的一天' }, ['早上八点，又是手忙脚乱的一天。'], '早上');
     add('老办法', { layout: 'compare', heading: '老办法', bullets: ['花时间', '容易错'] }, ['试了老办法，还是不行。'], '中午');
     add('转折', { layout: 'title', heading: name, body: focus || '换个方式' }, [`直到用上了${name}。`], '下午');
     feats.forEach((f, i) => add(`变化 ${i + 1}`, { layout: 'statement', heading: f, body: '' }, [`${f}。`]));
-    add('结尾', { layout: 'end', heading: name, body: '让每天轻一点' }, [`${name}，让每一天轻一点。`], '晚上');
+    add('结尾', { layout: 'end', heading: name, body: end('让每天轻一点') }, [act ? `${name}，${end('')}。` : `${name}，让每一天轻一点。`], '晚上');
   } else {
     add('钩子', { layout: 'question', heading: pick(['你也这样吗？', '还在这样做？', '一秒钟够吗？'], seed), body: '' }, [pick(hooks, seed)], '开场');
     add('痛点', { layout: 'statement', heading: '问题在这里', body: '花了时间，结果还不对' }, ['花了很多时间，结果还是不对。', '问题不在你，在方法。'], '痛点');
     add('出场', { layout: 'title', heading: name, body: focus || '换一种方式' }, [`所以我们做了${name}。`], '方案');
     feats.forEach((f, i) => add(`能力 ${i + 1}`, { layout: 'statement', heading: f, body: '' }, [`${f}。`], i === 0 ? '能力' : ''));
-    add('证据', { layout: 'number', heading: '3×', body: '效率提升（示例数据，请替换）' }, ['用过的人，效率平均提升三倍。'], '证据');
-    add('行动', { layout: 'end', heading: name, body: '现在就开始' }, [`${name}，现在就开始。`], '结尾');
+    add('证据', { layout: 'number', heading: '3×', body: '效率提升（示例数据，请替换）' }, ['这里换成一个真实的数字，或者一句用户原话（请替换）。'], '证据');
+    add('行动', { layout: 'end', heading: name, body: end('现在就开始') }, [`${name}，${end('现在就开始')}。`], '结尾');
   }
   // 按目标时长加减：太短就给每镜加一句，太长就合并
   const est = shots.reduce((a, s) => a + s.lines.reduce((b, l) => b + l.text.length / 4.6 + 0.8, 0.9), 0);

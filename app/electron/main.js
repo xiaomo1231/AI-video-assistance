@@ -25,6 +25,7 @@ import { SKILLS } from '../core/workflow/skills.js';
 import { normalize, emptyProject, apply, uid, newShot } from '../core/project.js';
 import { toSRT, toFCPXML, toEDL, toScript } from '../core/interchange.js';
 import { layout, snap } from '../core/timing.js';
+import { friendly, humanError } from '../core/errors.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(HERE, '..');
@@ -81,9 +82,10 @@ async function ttsLine(dir, p, l) {
   try { const r = await synthLine(opts, settings.ttsCfg(opts.provider), out); return { audio: rel(dir, out), dur: r.dur, take: n, provider: opts.provider }; }
   catch (e) {
     if (opts.provider !== 'system') { // 在线接口失败时退回系统语音，保证能出声
-      try { const r = await synthLine({ ...opts, provider: 'system', voice: '' }, {}, out); return { audio: rel(dir, out), dur: r.dur, take: n, provider: 'system', fallback: e.message }; } catch {}
+      try { const r = await synthLine({ ...opts, provider: 'system', voice: '' }, {}, out); return { audio: rel(dir, out), dur: r.dur, take: n, provider: 'system', fallback: e.message }; }
+      catch (e2) { throw humanError(`在线配音失败：${friendly(e)}；系统语音也不可用：${friendly(e2)}${process.platform === 'linux' ? '。Linux 可以装 espeak-ng' : ''}。可以在音频页导入自己的录音，或到设置 → 配音换接口`); }
     }
-    throw e;
+    throw humanError(friendly(e));
   }
 }
 
@@ -162,7 +164,12 @@ function workflowServices(dir, signal) {
       timeline: async () => { const p = await rpc('getProject'); const f = path.join(dir, '.mojian/cache/asr_mix.wav'); await mixAudio(dir, { ...p, music: [], sfx: [] }, f); return transcribe(f, { cfg: settings.asrCfg(), lang: 'zh' }); },
     },
     music: { bed: async (o) => { const p = await rpc('getProject'); const { asset, clip } = await musicBed(dir, p, o); await rpc('applyOps', { ops: [{ op: 'addAsset', args: { asset } }, ...p.music.filter((m) => m.bed).map((m) => ({ op: 'removeMusic', args: { id: m.id } })), { op: 'addMusic', args: clip }], label: '配乐' }); return o; } },
-    export: async (onP) => { const p = await rpc('getProject'); await saveProject(dir, p); return exportFilm({ dir, project: p, onProgress: (d) => { onP?.(d); send('export:progress', d); }, signal }); },
+    export: async (onP) => {
+      const p = await rpc('getProject'); await saveProject(dir, p);
+      const r = await exportFilm({ dir, project: p, onProgress: (d) => { onP?.(d); send('export:progress', d); }, signal });
+      await versions.commit(dir, `工作流导出 ${new Date().toLocaleString('zh-CN', { hour12: false })}`).catch(() => {}); // 和交付页导出一样，每次导出存一版
+      return r;
+    },
     capture: (url) => capturePage(dir, url),
     importFiles: async (files) => { const as = []; for (const f of files) as.push(await importAsset(dir, f)); await rpc('applyOps', { ops: as.map((a) => ({ op: 'addAsset', args: { asset: a } })), label: '导入素材' }); return as; },
     frameBitmap: async (t) => { const p = await rpc('getProject'); const r = await openRenderer({ width: 320, height: Math.round(320 * p.height / p.width / 2) * 2, project: p, dir }); try { return (await r.frame(t)).toBitmap(); } finally { r.close(); } },
@@ -171,7 +178,7 @@ function workflowServices(dir, signal) {
 }
 
 // ---------------- IPC ----------------
-function h(ch, fn) { ipcMain.handle(ch, async (_e, ...a) => { try { return { ok: true, data: await fn(...a) } } catch (e) { console.error(ch, e); return { ok: false, error: e.message || String(e) }; } }); }
+function h(ch, fn) { ipcMain.handle(ch, async (_e, ...a) => { try { return { ok: true, data: await fn(...a) } } catch (e) { console.error(ch, e); return { ok: false, error: friendly(e) || String(e) }; } }); }
 
 function registerIpc() {
   const appDir = app.getPath('userData');
@@ -230,7 +237,7 @@ function registerIpc() {
   h('export:interchange', async (dir, p, kind) => {
     const q = normalize(p); const base = path.join(dir, 'out', q.name.replace(/[\\/:*?"<>|]/g, '_'));
     await fs.mkdir(path.join(dir, 'out'), { recursive: true });
-    const map = { srt: ['.srt', toSRT(q)], fcpxml: ['.fcpxml', toFCPXML(q, { renderedVideo: base + '.mp4', assetPath: (a) => abs(dir, a.path) })], edl: ['.edl', toEDL(q)], script: ['_录音稿.txt', toScript(q)] };
+    const map = { srt: ['.srt', toSRT(q)], fcpxml: ['.fcpxml', toFCPXML(q, { renderedVideo: ['.mov', '.mp4'].map((e) => base + e).find((f) => existsSync(f)) || base + '.' + (CODECS[q.export.codec]?.ext || 'mp4'), assetPath: (a) => abs(dir, a.path), audioPath: (f) => abs(dir, f) })], edl: ['.edl', toEDL(q)], script: ['_录音稿.txt', toScript(q)] };
     const [ext, text] = map[kind]; await fs.writeFile(base + ext, text); return base + ext;
   });
   h('render:still', async (dir, p, t, width) => 'data:image/jpeg;base64,' + (await still({ dir, project: normalize(p), t, width })).toString('base64'));

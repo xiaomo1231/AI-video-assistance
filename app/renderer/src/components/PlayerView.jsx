@@ -18,7 +18,7 @@ export default function PlayerView({ title, compact, annotate = true, onFrame })
     const player = new Player(host.current, { mode: 'preview', base, onTime: (tt) => { if (player.playing && performance.now() - lastSet > 60) { lastSet = performance.now(); useStore.setState({ t: tt }); } } });
     pl.current = player; current.player = player;
     const orig = player.pause.bind(player);
-    player.pause = () => { orig(); useStore.setState({ playing: false, t: player.t }); };
+    player.pause = () => { orig(); const fps = useStore.getState().p?.fps || 30; useStore.setState({ playing: false, t: Math.round(player.t * fps) / fps }); }; // 停在整帧上，分割和导出才对得上
     const ro = new ResizeObserver(() => { const r = host.current.getBoundingClientRect(); if (player.p) setBox(player.fit(r.width, r.height)); player.frame(player.t); });
     ro.observe(host.current);
     return () => { ro.disconnect(); player.destroy(); if (current.player === player) current.player = null; };
@@ -63,7 +63,7 @@ export default function PlayerView({ title, compact, annotate = true, onFrame })
           </div>
         )}
         {draft?.text != null && box && (
-          <div style={{ position: 'absolute', zIndex: 8, left: Math.min(box.x + Math.max(draft.x0, draft.x1) * box.w + 8, box.x + box.w - 260), top: box.y + Math.min(draft.y0, draft.y1) * box.h, width: 250, background: 'var(--panel)', border: '1px solid var(--line2)', borderRadius: 8, padding: 8 }} onPointerDown={(e) => e.stopPropagation()}>
+          <div style={{ position: 'absolute', zIndex: 8, left: Math.max(box.x, Math.min(box.x + Math.min(draft.x0, draft.x1) * box.w, box.x + box.w - 260)), top: Math.min(box.y + Math.max(draft.y0, draft.y1) * box.h + 6, box.y + box.h - 110), /* 放在框下面，不挡住圈中的内容 */ width: 250, background: 'var(--panel)', border: '1px solid var(--line2)', borderRadius: 8, padding: 8 }} onPointerDown={(e) => e.stopPropagation()}>
             <textarea autoFocus placeholder="这里要怎么改？例：字太小，放大一点" value={draft.text} onChange={(e) => setDraft({ ...draft, text: e.target.value })} onKeyDown={(e) => { e.stopPropagation(); if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); save(); } if (e.key === 'Escape') setDraft(null); }} />
             <div className="row" style={{ marginTop: 6, justifyContent: 'flex-end' }}><button className="btn sm ghost" onClick={() => setDraft(null)}>取消</button><button className="btn sm pri" onClick={save}>保存圈注</button></div>
           </div>

@@ -29,7 +29,7 @@ export class Run {
 
   async start(from = 0) {
     this.state = 'running'; this.emit('start', { name: this.wf.name });
-    const loop = this.wf.loop; const maxRounds = loop?.max ?? 5;
+    const loop = checkLoop(this.wf); const maxRounds = loop?.max ?? 5;
     for (this.i = from; this.i < this.wf.steps.length; this.i++) {
       if (this.cancelled) return this.finish('cancelled');
       const step = this.wf.steps[this.i];
@@ -49,15 +49,15 @@ export class Run {
           }
           if (r?.verdict === 'fail') this.emit('info', { text: `已经来回 ${this.round} 轮，按当前版本继续` });
           this.emit('step', { status: 'done' });
-          for (let k = loop.from + 1; k <= loop.to; k++) this.status[k] = 'skipped';
+          for (let k = loop.from + 1; k <= loop.to; k++) if (this.status[k] !== 'done') this.status[k] = 'skipped'; // 前几轮改过的保持「完成」
           this.i = loop.to; continue; // 通过：跳过修改步骤
         }
         if (loop && this.fixing && this.i === loop.to) {
-          this.fixing = false; this.status[this.i] = 'done'; this.emit('step', { status: 'done', result: summarizeResult(r) });
+          this.fixing = false; this.status[this.i] = r?.warn ? 'warn' : 'done'; this.emit('step', { status: 'done', result: summarizeResult(r), out: r?.out });
           this.status[loop.from] = 'todo'; this.i = loop.from - 1; continue; // 改完回到审片
         }
         if (step.saveAs) this.ctx.vars[step.saveAs] = r;
-        this.status[this.i] = 'done'; this.emit('step', { status: 'done', result: summarizeResult(r) });
+        this.status[this.i] = r?.warn ? 'warn' : 'done'; this.emit('step', { status: 'done', result: summarizeResult(r), out: r?.out });
       } catch (e) {
         if (this.cancelled) return this.finish('cancelled');
         this.status[this.i] = 'error'; this.emit('error', { error: e.message });
@@ -74,3 +74,12 @@ export class Run {
 }
 
 function summarizeResult(r) { if (r == null) return null; if (typeof r === 'string') return r.slice(0, 200); if (r.text) return String(r.text).slice(0, 200); if (r.summary) return r.summary; return null; }
+
+/** 回路要从审片步骤出发、回到它后面的步骤；存坏了（比如删过步骤）就按审片步骤重新找，找不到就不走回路 */
+export function checkLoop(wf) {
+  const L = wf.loop; if (!L) return null; const st = wf.steps;
+  let from = L.from, to = L.to;
+  if (st[from]?.kind !== 'review') { from = st.findIndex((x) => x.kind === 'review'); if (from < 0) return null; to = Math.max(from + 1, to); }
+  to = Math.min(to, st.length - 1);
+  return to > from ? { ...L, from, to } : null;
+}

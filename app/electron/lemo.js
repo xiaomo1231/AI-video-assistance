@@ -41,6 +41,7 @@ export async function inspectScene(folder, { detect = true, step = 0.25, onProgr
 }
 
 export async function importLemo(dir, p, folder, opts = {}) {
+  folder = path.resolve(folder); // 相对路径先变成绝对路径，否则存进工程后会按工程目录去找，场景加载 404
   if (!fs.existsSync(path.join(folder, 'index.html'))) throw new Error('这个文件夹里没有 index.html，不是 lemo-opuscar 影片（应选 demo/ 或影片文件夹）');
   const meta = await inspectScene(folder, opts);
   const asset = { id: uid('a'), name: path.basename(path.dirname(folder)) + '/' + path.basename(folder), kind: 'scene', path: rel(dir, folder), dur: meta.dur, w: 1920, h: 1080, ev: meta.ev?.length || 0 };

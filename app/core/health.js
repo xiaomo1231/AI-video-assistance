@@ -17,9 +17,10 @@ export function health(p) {
   const small = p.shots.filter((s) => (s.font || 1) < 0.9);
   add('font', small.length ? 'warn' : 'ok', '字号', small.length ? `字号小于 90%：${small.map(sid).join('、')}` : '没有过小的字', small.map((s) => ({ shot: s.id })));
 
-  const noAudio = p.lines.filter((l) => !l.audio);
+  const noAudio = p.lines.filter((l) => !l.audio && !l.subOnly);
   const stale = p.lines.filter((l) => l.status === 'stale');
-  add('voice', stale.length ? 'warn' : noAudio.length ? 'warn' : 'ok', '配音',
+  // 只是还没配音不算问题（导出时会补），标成提示
+  add('voice', stale.length ? 'warn' : noAudio.length ? 'info' : 'ok', '配音',
     stale.length ? `第 ${stale.map(lno).join('、')} 句改过文字，配音需要重做` : noAudio.length ? `还有 ${noAudio.length} 句没有配音（导出时会自动生成）` : '每句都有配音', [...stale, ...noAudio].map((l) => ({ line: l.id })));
 
   const asrBad = p.lines.filter((l) => l.asr && l.asr.pass === false);
@@ -37,7 +38,10 @@ export function health(p) {
 
   const empty = p.shots.filter((s) => s.src.kind === 'card' && !shotLines(p, s.id).length && !(s.src.card?.heading || s.src.card?.body));
   add('empty', empty.length ? 'warn' : 'ok', '空镜头', empty.length ? `${empty.map(sid).join('、')} 没有文字也没有台词` : '没有空镜头', empty.map((s) => ({ shot: s.id })));
+  const fake = /示例数据|请替换|待替换/;
+  const demo = p.shots.filter((s) => { const c = s.src.card || {}; return [c.heading, c.body, ...(c.bullets || [])].some((x) => fake.test(x || '')) || shotLines(p, s.id).some((l) => fake.test(l.text)) || p.texts.some((t) => t.anchor === s.id && fake.test(t.text)); });
+  add('demo', demo.length ? 'warn' : 'ok', '示例内容', demo.length ? `${demo.map(sid).join('、')} 还是规则版写的示例数据，换成真实内容再发` : '没有留着的示例数据', demo.map((s) => ({ shot: s.id })));
   return res;
 }
 
-export const healthBad = (r) => r.filter((x) => x.level !== 'ok').length;
+export const healthBad = (r) => r.filter((x) => x.level === 'warn' || x.level === 'error').length;

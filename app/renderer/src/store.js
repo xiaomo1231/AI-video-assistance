@@ -21,7 +21,7 @@ export const useStore = create((set, get) => ({
   setT: (t) => set({ t }),
   say(text, err = false) { set({ toast: { text, err, at: Date.now() } }); setTimeout(() => { if (get().toast?.text === text) set({ toast: null }); }, err ? 6000 : 3000); },
 
-  load({ dir, project, base }) { set({ dir, base, p: normalize(project), undo: [], redo: [], dirty: false, sel: null, t: 0, compare: null }); },
+  load({ dir, project, base }) { const p = normalize(project); const f = p.shots[0]; set({ dir, base, p, undo: [], redo: [], dirty: false, sel: null, t: f && f.src.kind === 'card' ? Math.min(1.2, f.dur * 0.5) : 0, compare: null }); }, // 卡片第 0 帧还没入场，停在 1 秒左右看得到内容
   close() { set({ dir: null, p: null, page: 'home' }); },
 
   /** 唯一的修改入口：一组操作 + 撤销快照 + 自动保存 */
@@ -36,9 +36,9 @@ export const useStore = create((set, get) => ({
     return out;
   },
   /** 直接改 p（拖动过程中的实时预览），不进撤销栈；结束时调用 commitLive */
-  live(fn) { const { p } = get(); const next = clone(p); fn(next); layout(next); set({ p: next }); },
+  live(fn) { const { p } = get(); const next = clone(p); fn(next); layout(next); set({ p: next, dirty: true }); },
   beginLive() { set({ liveBase: clone(get().p) }); },
-  commitLive(label) { const { liveBase, undo } = get(); if (!liveBase) return; set({ undo: [...undo.slice(-UNDO_MAX), { label, p: liveBase }], redo: [], liveBase: null, dirty: true }); get().autosave(); },
+  commitLive(label) { const { liveBase, undo, p } = get(); if (!liveBase) return; if (JSON.stringify(liveBase) === JSON.stringify(p)) { set({ liveBase: null }); return; } set({ undo: [...undo.slice(-UNDO_MAX), { label, p: liveBase }], redo: [], liveBase: null, dirty: true }); get().autosave(); },
   doUndo() { const { undo, redo, p } = get(); if (!undo.length) return; const u = undo[undo.length - 1]; set({ p: u.p, undo: undo.slice(0, -1), redo: [...redo, { label: u.label, p }], dirty: true }); get().autosave(); get().say('撤销：' + u.label); },
   doRedo() { const { undo, redo, p } = get(); if (!redo.length) return; const r = redo[redo.length - 1]; set({ p: r.p, redo: redo.slice(0, -1), undo: [...undo, { label: r.label, p }], dirty: true }); get().autosave(); get().say('重做：' + r.label); },
   replace(p, label) { const { undo } = get(); set({ undo: [...undo, { label, p: get().p }], p: normalize(p), dirty: true }); get().autosave(); },

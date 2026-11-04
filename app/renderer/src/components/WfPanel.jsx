@@ -5,34 +5,42 @@ import { api } from '../api.js';
 import { fmtSec } from './ui.jsx';
 
 export default function WfPanel() {
-  const run = useStore((s) => s.run); const [min, setMin] = useState(false);
+  const run = useStore((s) => s.run); const [min, setMin] = useState(false); const [showSteps, setShowSteps] = useState(false);
   if (!run) return null;
   const wait = run.waiting; const steps = run.steps || [];
   const done = ['done', 'error', 'cancelled'].includes(run.state);
   const respond = (a) => api('workflow:respond', run.id, a).catch((e) => S().say(e.message, true));
   return (
-    <div className="wfpanel" style={min ? { maxHeight: 48 } : null}>
-      <div className="pane-h" style={{ cursor: 'pointer' }} onClick={() => setMin(!min)}>
+    <div className={'wfpanel' + (min ? ' min' : '')}>
+      <div className="pane-h" style={{ cursor: 'pointer' }} onClick={() => setMin(!min)} title={min ? '展开' : '收起'}>
         <span>⚙ {run.name}</span>
         <span className={'tag ' + (wait ? 'human' : '')}>{wait ? '等你' : { running: '进行中', done: '完成', error: '出错', cancelled: '已停止', waiting: '等你' }[run.state] || run.state}</span>
         {run.round > 0 && <span className="tag review">第 {run.round + 1} 轮</span>}
         <span className="spacer" />
         {!done && <button className="ib" onClick={(e) => { e.stopPropagation(); api('workflow:cancel', run.id); }}>停止</button>}
+        <button className="ib" title={min ? '展开' : '收起'} onClick={(e) => { e.stopPropagation(); setMin(!min); }}>{min ? '⌃ 展开' : '⌄ 收起'}</button>
         {done && <button className="ib" onClick={(e) => { e.stopPropagation(); useStore.setState({ run: null }); }}>✕</button>}
       </div>
       {!min && <div className="scroll">
-        <ul className="steps" style={{ paddingTop: 8 }}>
+        {/* 等你的内容放最上面，不用往下翻；步骤列表有等待时折成一行 */}
+        {wait && <Wait key={run.id + run.log?.length} wait={wait} respond={respond} />}
+        {run.info && <div className="warnbox">{run.info}</div>}
+        {done && run.out && <div className="field" style={{ background: 'rgba(92,194,138,.07)' }}>
+          <div className="st ok">成片已导出，并存了一版</div><div className="note" style={{ wordBreak: 'break-all', margin: '4px 0 6px' }}>{run.out}</div>
+          <div className="row"><button className="btn sm pri" onClick={() => api('shell:open', run.out)}>▶ 播放成片</button><button className="btn sm" onClick={() => api('shell:show', run.out)}>打开文件夹</button><button className="btn sm ghost" onClick={() => S().setPage('deliver')}>看交付体检</button></div>
+        </div>}
+        {wait && !showSteps ? <div className="row note" style={{ padding: '8px 14px' }}><span>第 {(run.i ?? 0) + 1} / {steps.length} 步 · {steps[run.i]?.name}</span><span className="spacer" /><button className="btn sm ghost" onClick={() => setShowSteps(true)}>看全部步骤</button></div>
+          : <ul className="steps" style={{ paddingTop: 8 }}>
           {steps.map((s, i) => (
             <li key={i} className={run.status[i]}>
-              <span style={{ width: 16 }}>{{ done: '✓', run: '◌', error: '✕', skipped: '–', todo: '○' }[run.status[i]] || '○'}</span>
+              <span style={{ width: 16 }}>{{ done: '✓', run: '◌', error: '✕', skipped: '–', todo: '○', warn: '!' }[run.status[i]] || '○'}</span>
               <span style={{ flex: 1 }}>{s.name}<br /><span className="note">{run.results?.[i] || s.desc}</span></span>
               <span className={'tag ' + s.kind}>{{ ai: 'AI', tool: '工具', human: '人工', review: '审片' }[s.kind]}</span>
             </li>
           ))}
-        </ul>
+          {wait && <li><button className="btn sm ghost" onClick={() => setShowSteps(false)}>收起步骤</button></li>}
+        </ul>}
         {run.progress && !wait && !done && <div style={{ padding: '0 14px 10px' }}><div className="note">{run.progress.text}</div><div className="progress"><i style={{ width: (run.progress.pct || 0) * 100 + '%' }} /></div></div>}
-        {run.info && <div className="warnbox">{run.info}</div>}
-        {wait && <Wait key={run.id + run.log?.length} wait={wait} respond={respond} />}
       </div>}
     </div>
   );
@@ -45,7 +53,7 @@ function Wait({ wait, respond }) {
   const box = (children) => <div style={{ padding: '4px 14px 14px', borderTop: '1px solid var(--line)' }}>{children}</div>;
   if (kind === 'confirm') return box(<><p>{d.text}</p><button className="btn pri" onClick={() => respond(true)}>继续</button></>);
   if (kind === 'questions') return box(<>
-    <p><b>AI 想先问清楚这几件事</b>（不知道的可以空着）</p>
+    <p><b>{d.offline ? '先问清楚这几件事，会写进分镜' : 'AI 想先问清楚这几件事'}</b>（不知道的可以空着）</p>
     {d.questions.map((q, i) => <div key={i} style={{ marginBottom: 8 }}><label>{i + 1}. {q}</label><input value={ans[i]} onKeyDown={(e) => e.stopPropagation()} onChange={(e) => setAns(ans.map((x, k) => (k === i ? e.target.value : x)))} /></div>)}
     <button className="btn pri" onClick={() => respond(Object.fromEntries(d.questions.map((q, i) => [q, ans[i]])))}>回答，继续</button>
   </>);
@@ -66,6 +74,7 @@ function Wait({ wait, respond }) {
       </div>
     </>);
   }
+  if (kind === 'fix') return <FixList d={d} respond={respond} box={box} />;
   if (kind === 'proposal') return box(<>
     <p>{d.text}</p>
     <div className="diff">{(d.changes || []).map((c, k) => <div key={k} className={c.kind}>{c.kind === 'add' ? '+ ' : c.kind === 'del' ? '− ' : '~ '}{c.text}</div>)}</div>
@@ -97,4 +106,19 @@ function Wait({ wait, respond }) {
     <button className="btn pri" style={{ marginTop: 8 }} onClick={() => respond(d.segments.filter((s, i) => ans[i]))}>按文字稿剪</button>
   </>);
   return box(<><p>{JSON.stringify(d).slice(0, 300)}</p><button className="btn pri" onClick={() => respond(true)}>继续</button></>);
+}
+
+/** 没配 AI 时的手动修改清单：按镜头列出，点一条跳过去，改完标已处理 */
+function FixList({ d, respond, box }) {
+  const p = useStore((s) => s.p); const [ok, setOk] = useState({});
+  const go = (it) => { const s = p.shots.find((x) => x.id === it.shot); if (s) { S().setSel({ kind: 'shot', id: s.id }); useStore.setState({ t: s.t0 + Math.min(1, s.dur / 2), playing: false }); } S().setPage('edit'); };
+  const mark = (it) => { setOk({ ...ok, [it.anno || it.text]: true }); if (it.anno) S().edit({ op: 'resolveAnnotation', args: { id: it.anno } }, '圈注已处理'); };
+  return box(<>
+    <p>{d.text}</p>
+    {d.done?.length > 0 && <div className="note" style={{ marginBottom: 6 }}>已自动处理：{d.done.join('；')}</div>}
+    {d.items.map((it, i) => { const k = it.anno || it.text; return <div key={i} className="row" style={{ padding: '4px 0', alignItems: 'flex-start', opacity: ok[k] ? 0.5 : 1 }}>
+      <span className="tag review" style={{ flex: 'none' }}>{it.label}</span><span style={{ flex: 1, textDecoration: ok[k] ? 'line-through' : '' }}>{it.text}</span>
+      {it.shot && <button className="btn sm" onClick={() => go(it)}>去这一镜</button>}<button className="btn sm ghost" disabled={ok[k]} onClick={() => mark(it)}>已处理</button></div>; })}
+    <button className="btn pri" style={{ marginTop: 8 }} onClick={() => respond(true)}>改好了，再审一遍</button>
+  </>);
 }

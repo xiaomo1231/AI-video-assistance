@@ -51,7 +51,7 @@ export default function AudioPage() {
         <div className="scroll">
           <table className="t">
             <thead><tr><th style={{ width: 36 }}>#</th><th style={{ width: 70 }}>时间</th><th style={{ width: 90 }}>角色</th><th>台词</th><th style={{ width: 70 }}>时长</th><th style={{ width: 90 }}>状态</th><th style={{ width: 150 }}></th></tr></thead>
-            <tbody>{p.lines.map((l, i) => (
+            <tbody>{[...p.lines].sort((a, b) => absT(p, a) - absT(p, b)).map((l, i) => (
               <tr key={l.id} className={sel?.id === l.id ? 'on' : ''} onClick={() => { S().setSel({ kind: 'line', id: l.id }); useStore.setState({ t: absT(p, l), playing: false }); }}>
                 <td className="mono">{i + 1}</td><td className="mono">{tc(absT(p, l), p.fps).slice(3, 8)}</td>
                 <td><select value={l.who} onClick={(e) => e.stopPropagation()} onChange={(e) => S().edit({ op: 'updateLine', args: { id: l.id, patch: { who: e.target.value } } }, '换角色')}>{[...new Set([...Object.keys(p.speakers), l.who])].map((w) => <option key={w}>{w}</option>)}</select></td>

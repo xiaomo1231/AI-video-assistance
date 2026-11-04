@@ -25,22 +25,25 @@ export default function App() {
 
   useEffect(() => {
     api('app:info').then((info) => useStore.setState({ info })).catch((e) => S().say('启动失败：' + e.message, true));
-    api('settings:get').then((settings) => useStore.setState({ settings }));
+    api('settings:get').then((settings) => useStore.setState({ settings, aiOpen: !!settings?.ai?.providers?.find((x) => x.id === settings.ai.active) })); // 没配 AI 时助手默认收起，把地方让给画面
     const offs = [
       serveRpc({
         getProject: () => S().p,
         applyOps: ({ ops, label, silent }) => { S().edit(ops, label || '工作流', { silent }); return S().p; },
-        focus: ({ page }) => { if (S().p) S().setPage(page); return true; },
+        focus: ({ page }) => { const st = S(); if (st.p) { st.setPage(page); const f = st.p.shots[0]; if (st.t === 0 && f?.src.kind === 'card') useStore.setState({ t: Math.min(1.2, f.dur * 0.5) }); } return true; }, // 停在第 0 帧时卡片还没入场，看着像空白
       }),
       on('workflow:event', (e) => {
         // 事件可能比 workflow:start 的返回值先到：先按 run id 记下来
         const prev = early.get(e.run) || {}; const acc = { ...prev, ...(e.snapshot || {}) };
+        if (e.out) acc.out = e.out;
         if (e.type === 'step' && e.result) acc.results = { ...(prev.results || {}), [e.i]: e.result };
         early.set(e.run, acc);
         const r = S().run; if (!r || e.run !== r.id) return;
         const nx = { ...r, ...(e.snapshot || {}) };
         if (e.type === 'step' && e.result) nx.results = { ...(r.results || {}), [e.i]: e.result };
         if (e.type === 'progress') nx.progress = e;
+        if (e.out) nx.out = e.out;
+        if (e.type === 'finish' || (e.type === 'answer' && e.answer?.verdict === 'pass')) nx.info = null; // 打回意见在通过或结束后收起
         if (e.type === 'info' || e.type === 'loop') nx.info = e.type === 'loop' ? `打回第 ${e.round} 轮：${(e.notes || []).join('；')}` : e.text;
         if (e.type === 'finish') { S().say(e.state === 'done' ? `「${r.name}」完成` : `「${r.name}」${e.state === 'error' ? '出错停止' : '已停止'}`, e.state === 'error'); }
         useStore.setState({ run: nx });
@@ -58,6 +61,14 @@ export default function App() {
       if (e.key === ' ') { e.preventDefault(); useStore.setState({ playing: !st.playing }); }
       else if (e.key === 'ArrowLeft') useStore.setState({ t: Math.max(0, st.t - (e.shiftKey ? 1 : f)), playing: false });
       else if (e.key === 'ArrowRight') useStore.setState({ t: Math.min(st.p.duration, st.t + (e.shiftKey ? 1 : f)), playing: false });
+      else if (e.key === 'k' || e.key === 'K') useStore.setState({ playing: false });
+      else if (e.key === 'l' || e.key === 'L') useStore.setState({ playing: true });
+      else if (e.key === 'j' || e.key === 'J') useStore.setState({ t: Math.max(0, st.t - 2), playing: false });
+      else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') { // 跳到上一个 / 下一个剪辑点
+        e.preventDefault(); const cuts = [0, ...st.p.shots.map((x) => x.t0 + x.dur)]; const eps = 1e-4;
+        const to = e.key === 'ArrowUp' ? [...cuts].reverse().find((c) => c < st.t - eps) : cuts.find((c) => c > st.t + eps);
+        if (to != null) useStore.setState({ t: Math.min(st.p.duration, to), playing: false });
+      }
       else if (e.key === 'Home') useStore.setState({ t: 0, playing: false });
       else if (e.key === 'End') useStore.setState({ t: st.p.duration, playing: false });
       else if (e.key === 'Delete' || e.key === 'Backspace') deleteSel();
@@ -80,7 +91,7 @@ export default function App() {
       <div className="top">
         <div className="brand"><i />墨剪</div>
         <div className="proj">{p ? <><b>{p.name}</b> · {tc(p.duration, p.fps)} · {p.shots.length} 镜 · {p.lines.length} 句 · {dirty ? '未保存' : savedAt ? '已保存' : ''}</> : '没有打开工程'}</div>
-        <div className="tabs">{PAGES.map(([k, n]) => <button key={k} className={page === k ? 'on' : ''} disabled={NEED_P.has(k) && !p} onClick={() => S().setPage(k)}>{n}{k === 'deliver' && bad > 0 ? ` · ${bad}` : ''}</button>)}</div>
+        <div className="tabs">{PAGES.map(([k, n]) => <button key={k} className={page === k ? 'on' : ''} disabled={NEED_P.has(k) && !p} title={k === 'deliver' && bad > 0 ? `成片体检有 ${bad} 项要看` : undefined} onClick={() => S().setPage(k)}>{n}{k === 'deliver' && bad > 0 ? ` ⚠${bad}` : ''}</button>)}</div>
         {p && <button className="ib" onClick={() => S().doUndo()} title="撤销 Ctrl+Z">↶</button>}
         {p && <button className="ib" onClick={() => S().doRedo()} title="重做">↷</button>}
         {!aiOpen && <button className="btn sm" onClick={() => useStore.setState({ aiOpen: true })}>AI 助手</button>}

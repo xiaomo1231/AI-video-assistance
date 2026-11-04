@@ -23,12 +23,22 @@ export async function collectClips(dir, p) {
   for (const s of p.shots) {
     if (s.src.kind !== 'media' || s.muted) continue;
     const a = p.assets.find((x) => x.id === s.src.asset);
-    if (a?.hasAudio && a.kind === 'video') clips.push({ file: abs(dir, a.path), at: s.t0, in: s.src.in || 0, dur: Math.max(0, s.dur - (s.hold || 0)) * (s.speed || 1), gain: s.volume ?? 0, kind: 'orig', speed: s.speed || 1 });
+    if (a?.hasAudio && a.kind === 'video') { const sp = s.speed || 1; const play = Math.max(0, s.dur - (s.hold || 0)); const srcDur = Math.max(0, Math.min(play * sp, (a.dur || Infinity) - (s.src.in || 0))); clips.push({ file: abs(dir, a.path), at: s.t0, in: s.src.in || 0, dur: srcDur, gain: s.volume ?? 0, kind: 'orig', speed: sp, outDur: play }); }
   }
   return clips.filter((c) => c.at < p.duration);
 }
 
 /** 生成混音 WAV，返回测得的响度 */
+/** atempo 单级只能 0.5~2 倍，超出就串联几级 */
+export function atempo(speed) {
+  const out = []; let k = speed;
+  while (k > 2) { out.push('atempo=2'); k /= 2; }
+  while (k < 0.5) { out.push('atempo=0.5'); k /= 0.5; }
+  if (Math.abs(k - 1) > 1e-6 || !out.length) out.push(`atempo=${+k.toFixed(6)}`);
+  return out.join(',');
+}
+
+/** 生成混音 WAV，返回测得的响度。loudness 为 null 时不做响度归一（给剪辑软件的中间片） */
 export async function mixAudio(dir, p, out, { loudness = -14, onProgress, signal } = {}) {
   const clips = await collectClips(dir, p);
   const D = Math.max(0.1, p.duration);
@@ -38,7 +48,8 @@ export async function mixAudio(dir, p, out, { loudness = -14, onProgress, signal
     inputs.push('-i', c.file);
     let f = `[${i}:a]aresample=48000,aformat=channel_layouts=stereo`;
     if (c.in || c.dur) f += `,atrim=start=${c.in || 0}${c.dur ? `:duration=${c.dur}` : ''},asetpts=PTS-STARTPTS`;
-    if (c.speed && c.speed !== 1) f += `,atempo=${Math.min(2, Math.max(0.5, c.speed))}`;
+    if (c.speed && c.speed !== 1) f += ',' + atempo(c.speed);
+    if (c.outDur) f += `,atrim=duration=${c.outDur.toFixed(4)},asetpts=PTS-STARTPTS`; // 原声不许拖进下一镜
     if (c.fadeIn) f += `,afade=t=in:d=${c.fadeIn}`;
     if (c.fadeOut && c.dur) f += `,afade=t=out:st=${Math.max(0, c.dur - c.fadeOut)}:d=${c.fadeOut}`;
     f += `,volume=${db(c.gain).toFixed(4)},adelay=${Math.round(c.at * 1000)}|${Math.round(c.at * 1000)}[c${i}]`;
@@ -60,15 +71,16 @@ export async function mixAudio(dir, p, out, { loudness = -14, onProgress, signal
   const graph = parts.join(';');
   const tmp = out + '.pre.wav';
   await run(['-y', ...inputs, '-filter_complex', graph, '-map', '[pre]', '-ar', '48000', '-c:a', 'pcm_s16le', tmp], { onProgress, signal });
+  if (loudness == null) { await fs.rename(tmp, out); return { measured: null, target: null, clips: clips.length, raw: true }; }
   // 两遍响度：先测
   const { stderr } = await run(['-y', '-i', tmp, '-af', `loudnorm=I=${loudness}:TP=-1.2:LRA=11:print_format=json`, '-f', 'null', '-'], { signal });
   const j = stderr.slice(stderr.lastIndexOf('{'), stderr.lastIndexOf('}') + 1);
   let m = null; try { m = JSON.parse(j); } catch {}
   // 没有人声时（只有配乐和音效）不硬拉到 -14：纯配乐拉到 -18 就够，免得把音效放大到刺耳
-  if (!voice.length) loudness = Math.min(loudness, -18);
+  const asked = loudness; if (!voice.length) loudness = Math.min(loudness, -18);
   if (m && isFinite(+m.input_i) && +m.input_i > -70) {
     await run(['-y', '-i', tmp, '-af', `loudnorm=I=${loudness}:TP=-1.2:LRA=11:measured_I=${m.input_i}:measured_TP=${m.input_tp}:measured_LRA=${m.input_lra}:measured_thresh=${m.input_thresh}:offset=${m.target_offset}:linear=true,aresample=48000`, '-c:a', 'pcm_s16le', out], { signal });
   } else await fs.copyFile(tmp, out);
   await fs.rm(tmp, { force: true });
-  return { measured: m ? +m.input_i : null, target: loudness, clips: clips.length };
+  return { measured: m ? +m.input_i : null, target: loudness, capped: loudness !== asked ? '没有人声，响度降到 -18 LUFS，免得把音效放大' : null, clips: clips.length };
 }
