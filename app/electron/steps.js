@@ -95,9 +95,10 @@ export function makeSteps() {
       await S['sfx.auto'](ctx); return { summary: `配乐：${r.mood}，${r.bpm} BPM` };
     },
     'sfx.auto': async (ctx) => {
-      const p = await ctx.svc.getProject(); const ops = [];
-      p.shots.forEach((s, i) => { if (i && (s.chapter || (s.trans?.type && s.trans.type !== 'cut')) && !p.sfx.some((x) => x.anchor === s.id)) ops.push({ op: 'addSfx', args: withIds('addSfx', { anchor: s.id, off: 0, synth: 'whoosh', gain: -10 }) }); });
-      for (const t of p.texts) if (!p.sfx.some((x) => x.anchor === t.anchor && Math.abs(x.off - t.off) < 0.1)) ops.push({ op: 'addSfx', args: withIds('addSfx', { anchor: t.anchor, off: t.off, synth: 'pop', gain: -8 }) });
+      // 克制一点：只在章节切换处加一个呼啸（至少隔 5 秒），花字只给综艺和角标加轻点的弹出
+      const p = await ctx.svc.getProject(); const ops = []; let last = -99;
+      p.shots.forEach((s, i) => { if (i && s.chapter && s.chapter !== p.shots[i - 1].chapter && s.t0 - last >= 5 && !p.sfx.some((x) => x.anchor === s.id)) { last = s.t0; ops.push({ op: 'addSfx', args: withIds('addSfx', { anchor: s.id, off: 0, synth: 'whoosh', name: '呼啸', gain: -20 }) }); } });
+      for (const t of p.texts) if (['burst', 'tag'].includes(t.style) && !p.sfx.some((x) => x.anchor === t.anchor && Math.abs(x.off - t.off) < 0.1)) ops.push({ op: 'addSfx', args: withIds('addSfx', { anchor: t.anchor, off: t.off, synth: 'pop', name: '弹出', gain: -16 }) });
       if (ops.length) await ctx.svc.applyOps(ops, '自动音效'); return { summary: `加了 ${ops.length} 个音效` };
     },
     export: async (ctx, step, run) => { const r = await ctx.svc.export((d) => run.emit('progress', d)); ctx.vars.output = r; return { summary: `已导出 ${path.basename(r.out)}（${Math.round(r.dur)} 秒）`, out: r.out }; },

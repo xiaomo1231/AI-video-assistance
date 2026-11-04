@@ -201,7 +201,7 @@ class AudioPreview {
     const mute = p.settings?.mute || {};
     for (const l of p.lines) if (!mute.vo && l.audio && !l.subOnly) { const a = absT(p, l); if (a + l.dur > t) sched(pl.url(l.audio), a, 0, l.audioDur || l.dur, l.gain || 0); }
     for (const m of p.music) { if (m.mute || mute.mu) continue; const as = p.assets.find((x) => x.id === m.asset); if (as && absT(p, m) + m.dur > t) sched(pl.url(as.path), absT(p, m), m.in || 0, m.dur, m.gain ?? -12, m.duck !== false); }
-    for (const x of p.sfx) { const at = absT(p, x); if (at < t || x.mute || mute.sx) continue; const as = x.asset && p.assets.find((q) => q.id === x.asset); const u = as ? pl.url(as.path) : x.synth ? pl.url(`audio/sfx/${x.synth}.wav`) : null; if (u) sched(u, at, 0, null, x.gain ?? -6); }
+    for (const x of p.sfx) { const at = absT(p, x); if (at < t || x.mute || mute.sx) continue; const as = x.asset && p.assets.find((q) => q.id === x.asset); const u = as ? pl.url(as.path) : x.synth ? pl.url(`audio/sfx/${x.synth}.v2.wav`) : null; if (u) sched(u, at, 0, null, x.gain ?? -12); }
   }
   stop() { this.token = null; for (const n of this.nodes) { try { n.stop(); } catch {} } this.nodes = []; }
   close() { this.stop(); this.ctx?.close(); }

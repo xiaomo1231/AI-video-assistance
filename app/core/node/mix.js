@@ -17,8 +17,8 @@ export async function collectClips(dir, p) {
   for (const x of p.sfx) {
     let f = null;
     if (x.asset) { const a = p.assets.find((q) => q.id === x.asset); f = a && abs(dir, a.path); }
-    else if (x.synth) { f = path.join(dir, 'audio/sfx', `${x.synth}.wav`); if (!existsSync(f)) { await fs.mkdir(path.dirname(f), { recursive: true }); await fs.writeFile(f, makeSfx(x.synth)); } }
-    if (f && existsSync(f) && !x.mute && !mute.sx) clips.push({ file: f, at: absT(p, x), in: 0, dur: null, gain: x.gain ?? -6, kind: 'sfx' });
+    else if (x.synth) { f = path.join(dir, 'audio/sfx', `${x.synth}.v2.wav`); if (!existsSync(f)) { await fs.mkdir(path.dirname(f), { recursive: true }); await fs.writeFile(f, makeSfx(x.synth)); } }
+    if (f && existsSync(f) && !x.mute && !mute.sx) clips.push({ file: f, at: absT(p, x), in: 0, dur: null, gain: x.gain ?? -12, kind: 'sfx' });
   }
   for (const s of p.shots) {
     if (s.src.kind !== 'media' || s.muted) continue;
@@ -64,6 +64,8 @@ export async function mixAudio(dir, p, out, { loudness = -14, onProgress, signal
   const { stderr } = await run(['-y', '-i', tmp, '-af', `loudnorm=I=${loudness}:TP=-1.2:LRA=11:print_format=json`, '-f', 'null', '-'], { signal });
   const j = stderr.slice(stderr.lastIndexOf('{'), stderr.lastIndexOf('}') + 1);
   let m = null; try { m = JSON.parse(j); } catch {}
+  // 没有人声时（只有配乐和音效）不硬拉到 -14：纯配乐拉到 -18 就够，免得把音效放大到刺耳
+  if (!voice.length) loudness = Math.min(loudness, -18);
   if (m && isFinite(+m.input_i) && +m.input_i > -70) {
     await run(['-y', '-i', tmp, '-af', `loudnorm=I=${loudness}:TP=-1.2:LRA=11:measured_I=${m.input_i}:measured_TP=${m.input_tp}:measured_LRA=${m.input_lra}:measured_thresh=${m.input_thresh}:offset=${m.target_offset}:linear=true,aresample=48000`, '-c:a', 'pcm_s16le', out], { signal });
   } else await fs.copyFile(tmp, out);

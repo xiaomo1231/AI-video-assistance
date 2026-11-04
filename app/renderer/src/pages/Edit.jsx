@@ -133,7 +133,7 @@ function SfxProps({ x }) {
   const up = (patch, label = '改音效') => S().edit({ op: 'updateSfx', args: { id: x.id, patch } }, label);
   return <>
     <Field label="音效">{x.synth ? <select value={x.synth} onChange={(e) => up({ synth: e.target.value, name: info.sfx[e.target.value] || e.target.value })}>{Object.entries(info?.sfx || {}).map(([n, cn]) => <option key={n} value={n}>{cn}</option>)}</select> : <span>{x.name}</span>}</Field>
-    <Field label="音量"><div className="row"><input type="range" min={-30} max={6} step={0.5} value={x.gain ?? -6} onChange={(e) => up({ gain: +e.target.value })} /><span className="note">{(x.gain ?? -6).toFixed(1)} dB</span></div></Field>
+    <Field label="音量"><div className="row"><input type="range" min={-30} max={6} step={0.5} value={x.gain ?? -12} onChange={(e) => up({ gain: +e.target.value })} /><span className="note">{(x.gain ?? -12).toFixed(1)} dB</span></div></Field>
     <label className="field row" style={{ color: 'var(--fg)' }}><input type="checkbox" checked={!!x.mute} onChange={(e) => up({ mute: e.target.checked }, '静音')} />静音</label>
   </>;
 }

@@ -89,7 +89,7 @@ async function ttsLine(dir, p, l) {
 
 async function musicBed(dir, p, { mood, bpm, gain = -14 }) {
   const dur = Math.ceil(p.duration + 2);
-  const f = path.join(dir, 'audio/music', `bed_${mood}_${bpm}_${dur}.wav`);
+  const f = path.join(dir, 'audio/music', `bed2_${mood}_${bpm}_${dur}.wav`);
   if (!existsSync(f)) await fs.writeFile(f, makeMusic({ mood, bpm, dur, seed: dur }));
   const asset = { id: uid('a'), name: `配乐 · ${mood} ${bpm} BPM`, kind: 'audio', path: rel(dir, f), dur };
   return { asset, clip: { id: uid('m'), asset: asset.id, name: asset.name, t0: 0, in: 0, dur: p.duration, gain, fadeIn: 0.8, fadeOut: 2, duck: true, bed: true } };
@@ -203,7 +203,7 @@ function registerIpc() {
   h('asr:check', async (dir, p, lineId) => { const l = p.lines.find((x) => x.id === lineId); return checkLine(abs(dir, l.audio), l.say || l.text, { cfg: settings.asrCfg(), lang: 'zh' }); });
   h('asr:transcribe', async (dir, file) => transcribe(abs(dir, file), { cfg: settings.asrCfg(), lang: 'zh' }));
   h('music:bed', async (dir, p, o) => musicBed(dir, p, o));
-  h('sfx:make', async (dir, name) => { const f = path.join(dir, 'audio/sfx', `${name}.wav`); if (!existsSync(f)) await fs.writeFile(f, makeSfx(name)); return rel(dir, f); });
+  h('sfx:make', async (dir, name) => { const f = path.join(dir, 'audio/sfx', `${name}.v2.wav`); if (!existsSync(f)) { await fs.mkdir(path.dirname(f), { recursive: true }); await fs.writeFile(f, makeSfx(name)); }; return rel(dir, f); });
 
   h('settings:get', () => settings.publicSettings());
   h('settings:set', (patch) => { const r = settings.update(patch); const s = settings.load(); setBinaries({ ffmpeg: s.ffmpeg.path || undefined, ffprobe: s.ffmpeg.ffprobe || undefined }); return r; });

@@ -108,7 +108,7 @@ export const ops = {
   addMusic(p, { asset, t0 = 0, dur, name, gain = -12, id }) { const m = { id: id || uid('m'), asset, name: name || '音乐', t0, in: 0, dur, gain, fadeIn: 0.5, fadeOut: 1.5, duck: true }; p.music.push(m); return m.id; },
   updateMusic(p, { id, patch }) { const m = p.music.find((x) => x.id === id); if (m) Object.assign(m, patch); },
   removeMusic(p, { id }) { p.music = p.music.filter((x) => x.id !== id); },
-  addSfx(p, { anchor, off = 0, asset, synth, name, gain = -6, id }) { const x = { id: id || uid('x'), anchor, off, asset: asset || null, synth: synth || null, name: name || synth || '音效', gain, dur: 0.6 }; p.sfx.push(x); return x.id; },
+  addSfx(p, { anchor, off = 0, asset, synth, name, gain = -12, id }) { const x = { id: id || uid('x'), anchor, off, asset: asset || null, synth: synth || null, name: name || synth || '音效', gain, dur: 0.6 }; p.sfx.push(x); return x.id; },
   updateSfx(p, { id, patch }) { const x = p.sfx.find((q) => q.id === id); if (x) Object.assign(x, patch); },
   removeSfx(p, { id }) { p.sfx = p.sfx.filter((x) => x.id !== id); },
   addText(p, { anchor, off = 0, dur = 3, text = '文字', style = 'tag', x = 0.5, y = 0.2, id }) { const t = { id: id || uid('t'), anchor, off, dur, text, style, x, y, anim: 'pop' }; p.texts.push(t); return t.id; },
