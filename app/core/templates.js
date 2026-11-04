@@ -46,6 +46,37 @@ export const TEMPLATES = [
   T('04-3d-render', '3D 软萌渲染', '3D Render', '材质与 3D', ['产品宣传', '社交短视频'], M, '软光照、圆润体块和轻微景深。', { bg: '#e9e4ff', fg: '#25204a', accent: '#ff8fab', accent2: '#7c6cff', sub: '#5c5680' }, { head: F.round, body: F.hei }, 'soft3d', 'pop', 'dissolve', { mood: 'cute', bpm: 108 }),
   T('06-collage', '拼贴', 'Collage', '印刷与版画', ['产品宣传', '社交短视频'], M, '剪报、撕纸和错位排版。', { bg: '#efe9de', fg: '#181818', accent: '#ff4d2e', accent2: '#2e6bff', sub: '#555049' }, { head: F.black, body: F.song }, 'collage', 'stamp', 'cut', { mood: 'quirky', bpm: 112 }),
   T('new-journal-collage', '手账拼贴', 'Journal Collage', '手绘与绘画', ['vlog', '学习记录', '旅行'], '墨剪', '胶带、贴纸、手写字和便签。', { bg: '#fdf6ec', fg: '#3b2f2f', accent: '#f28b82', accent2: '#8ecae6', sub: '#8a7b70' }, { head: F.kai, body: F.round }, 'journal', 'wobble', 'page', { mood: 'lofi', bpm: 84 }),
+
+  // ---- 第二批：按用途补的 15 个（口播包装、带货竖屏、宣传片、讲解） ----
+  T('slogan', '口号大字发布', 'Slogan Keynote', '图形与排版', ['发布会', '品牌口号', 'SaaS'], '墨剪', '黑底白字，一屏一句口号，关键词换成亮黄。', { bg: '#0f0f0f', fg: '#ffffff', accent: '#ffd43b', accent2: '#ffd43b', sub: '#a7a7a7' }, { head: F.black, body: F.hei }, 'slab', 'punch', 'cut', { mood: 'tech', bpm: 124 }),
+  T('coral', '珊瑚标题卡', 'Coral Title Card', '图形与排版', ['App 发布', '新功能', '活动预告'], '墨剪', '整屏珊瑚色，白色大标题居中，干净利落。', { bg: '#ff6b4a', fg: '#ffffff', accent: '#ffffff', accent2: '#ffe1d6', sub: '#ffe9e2' }, { head: F.song, body: F.hei }, 'slab', 'rise', 'push', { mood: 'upbeat', bpm: 116 }),
+  T('aurora', 'AI 功能总览', 'Aurora Overview', '信息与发布', ['AI 产品', '功能总览', '发布会'], '墨剪', '淡紫到淡蓝的柔光，同心圆慢慢呼吸。', { bg: '#f6f0ff', fg: '#3f3d99', accent: '#8b87e8', accent2: '#dce6ff', sub: '#6b6aa8' }, { head: F.hei, body: F.hei }, 'aurora', 'rise', 'dissolve', { mood: 'light-tech', bpm: 100 }),
+  T('paper-map', '纸上漫游', 'Paper Map Journey', '印刷与版画', ['旅行路线', '流程讲解', '历史脉络'], '墨剪', '薄荷色纸面、撕纸胶带，一条红线把地点串起来。', { bg: '#dcefea', fg: '#1e1e1e', accent: '#e0413a', accent2: '#9fd8c8', sub: '#3d5a55' }, { head: F.black, body: F.hei }, 'route', 'stamp', 'wipe', { mood: 'acoustic', bpm: 100 }),
+  T('pastel-flat', '粉彩扁平二维', 'Pastel Flat 2D', '图形与排版', ['科普', '儿童教育', '健康'], '墨剪', '粉、薄荷、奶黄的几何块，圆润友好。', { bg: '#fcefe6', fg: '#3b3355', accent: '#f6a6b2', accent2: '#8fd3c8', sub: '#7a6f8c' }, { head: F.round, body: F.round }, 'flat', 'bounce', 'wipe', { mood: 'cute', bpm: 108 }),
+  T('clay', '黏土动画', 'Claymation', '材质与 3D', ['儿童故事', '科普', '美食'], '墨剪', '暖橙色黏土质感，圆滚滚的体块和柔和阴影。', { bg: '#f3c88b', fg: '#4a2a14', accent: '#f08a3c', accent2: '#e9a35c', sub: '#7a4d2c' }, { head: F.round, body: F.round }, 'soft3d', 'bounce', 'dissolve', { mood: 'cute', bpm: 104 }),
+  T('papercraft', '纸艺立体布景', 'Papercraft Diorama', '材质与 3D', ['历史', '人文纪录', '品牌故事'], '墨剪', '牛皮纸一层层叠出前后景，标题像贴上去的纸牌。', { bg: '#c89a62', fg: '#2e1d0e', accent: '#b5532c', accent2: '#8a5a2b', sub: '#4d3520' }, { head: F.song, body: F.song }, 'kraft', 'stamp', 'page', { mood: 'folk', bpm: 88 }),
+  T('red-black', '红黑硬核', 'Red & Black Industrial', '剪辑与纪实', ['数码评测', '参数对比', '硬核科普'], '墨剪', '黑底点阵，红色色块里放参数，数字又大又硬。', { bg: '#141414', fg: '#ffffff', accent: '#e02020', accent2: '#3a3a3a', sub: '#bdbdbd' }, { head: F.black, body: F.black }, 'hardcore', 'punch', 'cut', { mood: 'action', bpm: 132 }),
+  T('big-number', '深蓝大字', 'Deep Blue Numbers', '信息与发布', ['口播数据', '年报', '增长故事'], '墨剪', '深蓝底，一个巨大的数字配一条细柱状图。', { bg: '#18284a', fg: '#e6ecff', accent: '#3f6cff', accent2: '#2c4377', sub: '#9fb3d6' }, { head: F.black, body: F.hei }, 'data', 'grow', 'fade', { mood: 'serious', bpm: 96 }),
+  T('highlighter', '纸感荧光笔', 'Paper & Highlighter', '印刷与版画', ['知识口播', '读书笔记', '论文解读'], '墨剪', '米白纸面，关键句用黄色荧光笔划出来。', { bg: '#f2efe8', fg: '#2a2a2a', accent: '#c48a00', accent2: '#ffe55c', sub: '#5c5a55' }, { head: F.hei, body: F.hei }, 'marker', 'draw', 'wipe', { mood: 'lofi', bpm: 86 }),
+  T('fashion-mix', '时尚混排', 'Fashion Editorial', '图形与排版', ['口播', '穿搭', '生活方式'], '墨剪', '深蓝光晕，衬线斜体大字和细小英文混排。', { bg: '#0e1a3a', fg: '#f2d7a6', accent: '#f2d7a6', accent2: '#2c4b8e', sub: '#cfd8f0' }, { head: F.song, body: F.hei }, 'moody', 'slide', 'dissolve', { mood: 'lofi', bpm: 92 }),
+  T('price-pop', '价格爆字', 'Price Pop', '游戏', ['带货', '限时优惠', '直播切片'], '墨剪', '黄色放射光，红字大价格，一眼看到优惠。', { bg: '#ffb800', fg: '#c4161c', accent: '#c4161c', accent2: '#ffe14d', sub: '#7a0d10' }, { head: F.black, body: F.black }, 'pricepop', 'punch', 'flash', { mood: 'festive', bpm: 140 }),
+  T('zhongcao', '真人感种草', 'Lifestyle Seeding', '剪辑与纪实', ['种草', '好物分享', '小红书'], '墨剪', '奶咖色暖调，大圆角标签写一句真心话。', { bg: '#e9dfd2', fg: '#3b2c22', accent: '#e0533a', accent2: '#cdbba6', sub: '#6f5b4b' }, { head: F.round, body: F.hei }, 'paper', 'pop', 'dissolve', { mood: 'warm', bpm: 96 }),
+  T('checklist', '清单测评', 'Checklist Review', '剪辑与纪实', ['测评', '对比', '避坑'], '墨剪', '白底横线本，一条条打勾，结论放最后。', { bg: '#f7f5f0', fg: '#1a1a1a', accent: '#2ba36b', accent2: '#d9d4c9', sub: '#555555' }, { head: F.black, body: F.hei }, 'journal', 'rise', 'cut', { mood: 'upbeat', bpm: 112 }),
+  T('unbox', '真人开箱', 'Unboxing', '图形与排版', ['开箱', '新品', '礼盒'], '墨剪', '暖白底配橙色盒子色块，标题像贴纸一样弹出来。', { bg: '#efe9e1', fg: '#1a1a1a', accent: '#f07a2b', accent2: '#f59a55', sub: '#5e5248' }, { head: F.black, body: F.hei }, 'flat', 'pop', 'push', { mood: 'upbeat', bpm: 118 }),
+];
+
+const SCENE = {"slogan": "promo", "coral": "promo", "aurora": "promo", "paper-map": "explain", "pastel-flat": "explain", "clay": "explain", "papercraft": "explain", "red-black": "talk", "big-number": "talk", "highlighter": "talk", "fashion-mix": "talk", "price-pop": "shop", "zhongcao": "shop", "checklist": "shop", "unbox": "shop", "dark-keynote": "promo", "living-screencast": "promo", "01-flat-vector": "promo", "04-3d-render": "promo", "risograph": "promo", "whiteboard": "explain", "chalkboard": "explain", "iso-infographic": "explain", "dataviz": "explain", "midcentury-toon": "explain", "urban-sketch": "explain", "news-package": "talk", "halftone-dossier": "talk", "microgame": "shop", "crayon-book": "story", "watercolor": "story", "impasto": "story", "cel-anime-80s": "story", "new-anime-key-visual": "story", "rubber-hose": "story", "new-journal-collage": "story", "06-collage": "story", "ink-wash": "culture", "shadow-puppet": "culture", "papercut-red": "culture", "ukiyoe": "culture", "woodcut": "culture", "game-show": "fun", "pixel-rpg": "fun", "new-american-comic": "fun"};
+for (const t of TEMPLATES) t.scene = SCENE[t.id] || 'story';
+
+/** 开始页的风格画廊：按用途分组。v = 竖版预览 */
+export const GALLERY = [
+  { k: 'promo', n: '产品宣传片', d: '讲清楚一个产品，出片就能发' },
+  { k: 'explain', n: '讲解视频', d: '把一件事讲明白，适合课程和科普' },
+  { k: 'talk', n: '口播包装', d: '给真人口播加字幕、数据和花字' },
+  { k: 'shop', n: '带货竖屏', d: '9:16，适合抖音、小红书、视频号', v: true },
+  { k: 'story', n: '故事与情绪', d: '绘本、动画、MV 和情绪短片' },
+  { k: 'culture', n: '东方与节庆', d: '水墨、剪纸、皮影和版画' },
+  { k: 'fun', n: '综艺与游戏', d: '节奏快、花字多，适合整活' },
 ];
 
 export const TEMPLATE_CATS = ['手绘与绘画', '东方传统', '印刷与版画', '信息与发布', '卡通与动画', '游戏', '剪辑与纪实', '图形与排版', '材质与 3D'];

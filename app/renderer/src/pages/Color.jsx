@@ -6,7 +6,7 @@ import { shotAt } from '../../../core/timing.js';
 import { defGrade } from '../../../core/project.js';
 import { LOOKS, gradePixel, isNeutral } from '../player/grade.js';
 import PlayerView from '../components/PlayerView.jsx';
-import { Slider, Thumb, sid } from '../components/ui.jsx';
+import { Slider, Thumb, sid, Icon } from '../components/ui.jsx';
 
 const PH = [0, (2 * Math.PI) / 3, (-2 * Math.PI) / 3];
 const toVec = (c) => { const m = (c[0] + c[1] + c[2]) / 3; let x = 0, y = 0; c.forEach((v, i) => { x += (v - m) * Math.cos(PH[i]); y += (v - m) * Math.sin(PH[i]); }); return [(x * 2) / 3, (y * 2) / 3, m]; };
@@ -28,14 +28,14 @@ export default function Color() {
     <div className="color">
       <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, minHeight: 0 }}>
         <div style={{ flex: 1, display: 'flex', minHeight: 0 }}><PlayerView title={`调色 · ${sid(p, shot)} ${shot.title}`} annotate={false} /></div>
-        <div className="strip">{p.shots.map((s) => <button key={s.id} className={s.id === shot.id ? 'on' : ''} onClick={() => pickShot(s)}><div style={{ aspectRatio: '16/9' }}><Thumb shot={s} w={200} /></div><span>{sid(p, s)} {isNeutral(s.grade) ? '' : '●'} {s.title}</span></button>)}</div>
+        <div className="strip">{p.shots.map((s) => <button key={s.id} className={s.id === shot.id ? 'on' : ''} onClick={() => pickShot(s)}><div style={{ aspectRatio: '16/9' }}><Thumb shot={s} w={200} /></div><span>{sid(p, s)} {s.title}</span>{!isNeutral(s.grade) && <i title="调过色" />}</button>)}</div>
       </div>
       <div className="pane" style={{ borderLeft: '1px solid var(--line)' }}>
-        <div className="pane-h">{sid(p, shot)} 一级调色<span className="spacer" />
-          <button className="ib" title="复制调色" onClick={() => { clip = g; S().say('已复制调色'); }}>复制</button>
-          <button className="ib" title="粘贴到当前镜头" disabled={!clip} onClick={() => clip && set(clip, '粘贴调色')}>粘贴</button>
-          <button className="ib" title="当前调色应用到全部镜头" onClick={() => S().edit(p.shots.map((s) => ({ op: 'updateShot', args: { id: s.id, patch: { grade: g } } })), '调色应用到全部')}>应用全部</button>
-          <button className="ib" onClick={() => set(defGrade(), '重置调色')}>重置</button>
+        <div className="pane-h"><Icon n="palette" s={15} />{sid(p, shot)} 一级调色<span className="spacer" />
+          <button className="ib sm" title="复制调色" onClick={() => { clip = g; S().say('已复制调色'); }}><Icon n="copy" s={14} /></button>
+          <button className="ib sm" title="粘贴到当前镜头" disabled={!clip} onClick={() => clip && set(clip, '粘贴调色')}>粘贴</button>
+          <button className="ib sm" title="当前调色应用到全部镜头" onClick={() => S().edit(p.shots.map((s) => ({ op: 'updateShot', args: { id: s.id, patch: { grade: g } } })), '调色应用到全部')}>应用全部</button>
+          <button className="ib sm" title="重置调色" onClick={() => set(defGrade(), '重置调色')}><Icon n="refresh" s={14} /></button>
         </div>
         <div className="scroll">
           <Scopes shot={shot} g={g} p={p} dir={dir} />

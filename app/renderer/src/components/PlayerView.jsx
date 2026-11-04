@@ -3,7 +3,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Player } from '../player/stage.js';
 import { useStore, S } from '../store.js';
 import { tc, shotAt } from '../../../core/timing.js';
-import { sid } from './ui.jsx';
+import { sid, Icon } from './ui.jsx';
 
 export const current = { player: null };
 let lastSet = 0;
@@ -52,8 +52,8 @@ export default function PlayerView({ title, compact, annotate = true, onFrame })
       {!compact && <div className="ph">
         <span>{title || '预览'}</span>{shot && <span className="tag">{sid(p, shot)} · {shot.title}</span>}
         <span className="spacer" />
-        <button className={'ib' + (subs ? ' on' : '')} onClick={() => setSubs(!subs)}>字幕</button>
-        {annotate && <button className={'ib' + (annoMode ? ' on' : '')} onClick={() => useStore.setState({ annoMode: !annoMode })} title="在画面上拖一个框，写一句修改意见">✎ 圈注</button>}
+        <button className={'ib sm' + (subs ? ' on' : '')} onClick={() => setSubs(!subs)} title="预览里显示字幕">字幕</button>
+        {annotate && <button className={'ib sm' + (annoMode ? ' on' : '')} onClick={() => useStore.setState({ annoMode: !annoMode })} title="在画面上拖一个框，写一句修改意见"><Icon n="pen" s={14} />圈注</button>}
       </div>}
       <div className="screen" ref={host}>
         {annotate && box && (annoMode || annos.length > 0) && (
@@ -63,7 +63,7 @@ export default function PlayerView({ title, compact, annotate = true, onFrame })
           </div>
         )}
         {draft?.text != null && box && (
-          <div style={{ position: 'absolute', zIndex: 8, left: Math.max(box.x, Math.min(box.x + Math.min(draft.x0, draft.x1) * box.w, box.x + box.w - 260)), top: Math.min(box.y + Math.max(draft.y0, draft.y1) * box.h + 6, box.y + box.h - 110), /* 放在框下面，不挡住圈中的内容 */ width: 250, background: 'var(--panel)', border: '1px solid var(--line2)', borderRadius: 8, padding: 8 }} onPointerDown={(e) => e.stopPropagation()}>
+          <div style={{ position: 'absolute', zIndex: 8, left: Math.max(box.x, Math.min(box.x + Math.min(draft.x0, draft.x1) * box.w, box.x + box.w - 260)), top: Math.min(box.y + Math.max(draft.y0, draft.y1) * box.h + 6, box.y + box.h - 110), /* 放在框下面，不挡住圈中的内容 */ width: 250, background: 'var(--ink2)', border: '1px solid var(--line2)', borderRadius: 8, padding: 8, boxShadow: 'var(--shadow)' }} onPointerDown={(e) => e.stopPropagation()}>
             <textarea autoFocus placeholder="这里要怎么改？例：字太小，放大一点" value={draft.text} onChange={(e) => setDraft({ ...draft, text: e.target.value })} onKeyDown={(e) => { e.stopPropagation(); if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); save(); } if (e.key === 'Escape') setDraft(null); }} />
             <div className="row" style={{ marginTop: 6, justifyContent: 'flex-end' }}><button className="btn sm ghost" onClick={() => setDraft(null)}>取消</button><button className="btn sm pri" onClick={save}>保存圈注</button></div>
           </div>
@@ -80,14 +80,14 @@ export function Transport() {
   const go = (x) => useStore.setState({ t: Math.max(0, Math.min(p.duration, x)), playing: false });
   return (
     <div className="ctrl">
-      <button className="ib" onClick={() => go(0)} title="到开头 Home">⏮</button>
-      <button className="ib" onClick={() => go(t - step)} title="上一帧 ←">◀</button>
-      <button className="btn pri sm" style={{ minWidth: 56 }} onClick={() => useStore.setState({ playing: !playing })} title="空格">{playing ? '❚❚ 暂停' : '▶ 播放'}</button>
-      <button className="ib" onClick={() => go(t + step)} title="下一帧 →">▶</button>
-      <button className="ib" onClick={() => go(p.duration)} title="到结尾 End">⏭</button>
-      <span className="tc">{tc(t, p.fps)} <small>/ {tc(p.duration, p.fps)}</small></span>
+      <button className="ib sm" onClick={() => go(0)} title="到开头 Home"><Icon n="prev" s={14} /></button>
+      <button className="ib sm" onClick={() => go(t - step)} title="上一帧 ←"><Icon n="stepb" s={14} /></button>
+      <button className="playb" onClick={() => useStore.setState({ playing: !playing })} title={playing ? '暂停（空格）' : '播放（空格）'} aria-label={playing ? '暂停' : '播放'}><Icon n={playing ? 'pause' : 'play'} s={15} /></button>
+      <button className="ib sm" onClick={() => go(t + step)} title="下一帧 →"><Icon n="stepf" s={14} /></button>
+      <button className="ib sm" onClick={() => go(p.duration)} title="到结尾 End"><Icon n="next" s={14} /></button>
+      <span className="tc num">{tc(t, p.fps)} <small>/ {tc(p.duration, p.fps)}</small></span>
       <span className="spacer" />
-      <span className="note">{p.width}×{p.height} · {p.fps} fps</span>
+      <span className="note faint res">{p.width}×{p.height} · {p.fps} fps</span>
     </div>
   );
 }

@@ -1,21 +1,32 @@
 // 设置：AI 接口（API Key / Coding Plan / CLI 登录 / 本地）、配音接口、听写、工具路径、用量
 import React, { useEffect, useState } from 'react';
-import { useStore, S } from '../store.js';
+import { useStore, S, LAYOUT_DEF } from '../store.js';
 import { api } from '../api.js';
-import { Field, Tabs } from '../components/ui.jsx';
+import { Field, Tabs, Icon } from '../components/ui.jsx';
 
 const save = async (patch) => { const s = await api('settings:set', patch); useStore.setState({ settings: s }); return s; };
 
 export default function Settings() {
   const [tab, setTab] = useState('ai');
-  return (
-    <div className="pane" style={{ flex: 1 }}>
-      <Tabs value={tab} onChange={setTab} items={[['ai', 'AI'], ['tts', '配音'], ['asr', '听写'], ['tools', '工具'], ['usage', '用量'], ['about', '关于']]} />
-      <div className="scroll"><div style={{ maxWidth: 860, margin: '0 auto', padding: '10px 0 40px' }}>
-        {tab === 'ai' && <AiTab />}{tab === 'tts' && <TtsTab />}{tab === 'asr' && <AsrTab />}{tab === 'tools' && <ToolsTab />}{tab === 'usage' && <UsageTab />}{tab === 'about' && <About />}
-      </div></div>
-    </div>
-  );
+  return <>
+    <div className="pane-h"><Icon n="gear" s={16} />设置<span className="spacer" /><span className="note">改完点保存，Esc 关闭</span><button className="ib" onClick={() => useStore.setState({ settingsOpen: false })} title="关闭"><Icon n="x" /></button></div>
+    <Tabs value={tab} onChange={setTab} items={[['ai', 'AI'], ['tts', '配音'], ['asr', '听写'], ['tools', '工具'], ['usage', '用量'], ['look', '外观'], ['about', '关于']]} />
+    <div className="scroll"><div style={{ padding: '6px 0 40px' }}>
+      {tab === 'ai' && <AiTab />}{tab === 'tts' && <TtsTab />}{tab === 'asr' && <AsrTab />}{tab === 'tools' && <ToolsTab />}{tab === 'usage' && <UsageTab />}{tab === 'look' && <LookTab />}{tab === 'about' && <About />}
+    </div></div>
+  </>;
+}
+
+// AI 接口分四组：本机已登录的 CLI（不用 Key）、订阅套餐（Coding Plan）、按量 API Key、本地模型
+const GROUP = (x) => (x.proto === 'cli' || x === 'cli' ? 'cli' : /coding/.test(x.preset || x.id || '') ? 'plan' : /^(ollama|lmstudio)$/.test(x.preset || x.id || '') ? 'local' : 'key');
+const GROUPS = [['cli', '本机已登录', '装了 Claude Code / Codex / Gemini / Qwen CLI 就直接用，走你自己的订阅，不填 Key'], ['plan', '订阅套餐', '各家 Coding Plan，走 Anthropic 兼容接口，Key 在对方控制台'], ['key', 'API Key', '按量付费，在这里填价格和月度上限'], ['local', '本地', '完全离线，不需要 Key']];
+
+function LookTab() {
+  const theme = useStore((x) => x.theme);
+  return <>
+    <Field label="主题"><div className="seg"><button className={theme !== 'light' ? 'on' : ''} onClick={() => S().setTheme('dark')}><Icon n="moon" s={13} />深色</button><button className={theme === 'light' ? 'on' : ''} onClick={() => S().setTheme('light')}><Icon n="sun" s={13} />浅色</button></div></Field>
+    <Field label="布局" note="各栏宽度、时间线高度是拖出来的，记在这台电脑上。"><button className="btn sm" onClick={() => { S().setLayout({ ...LAYOUT_DEF }); S().say('布局已还原'); }}><Icon n="refresh" s={14} />还原默认布局</button></Field>
+  </>;
 }
 
 function AiTab() {
@@ -29,33 +40,36 @@ function AiTab() {
   const found = Object.entries(cli || {}).filter(([, v]) => v?.path).map(([k]) => k);
   const persist = async (l, active) => { await save({ ai: { providers: l.map((x) => ({ ...x, key: keys[x.id] || '' })), active } }); setKeys({}); };
   const upd = (id, patch) => setList(list.map((x) => (x.id === id ? { ...x, ...patch } : x)));
-  return <>
-    <div className="field"><b>AI 接口</b><div className="note">支持主流 API Key、各家 Coding Plan（走 Anthropic 兼容接口）、Claude Code / Codex / Gemini / Qwen 的 CLI 登录，以及本地 Ollama / LM Studio。Key 用系统钥匙串加密，只存在本机。</div></div>
-    {list.map((x) => (
-      <div key={x.id} className="field" style={{ background: s.ai.active === x.id ? 'rgba(240,138,60,.06)' : '' }}>
+  const card = (x) => (
+      <div key={x.id} className="field" style={{ background: s.ai.active === x.id ? 'var(--accbg)' : '' }}>
         <div className="row" style={{ marginBottom: 8 }}><input value={x.name} onChange={(e) => upd(x.id, { name: e.target.value })} style={{ fontWeight: 600 }} />
-          {s.ai.active === x.id ? <span className="tag ai">正在用</span> : <button className="btn sm" onClick={() => persist(list, x.id)}>用这个</button>}
-          <button className="btn sm" onClick={async () => { await persist(list, s.ai.active); setTest({ ...test, [x.id]: '测试中…' }); try { const r = await api('ai:test', x.id); setTest({ ...test, [x.id]: '✓ ' + (r.text || '连通') }); if (!s.ai.active || s.ai.active !== x.id) await persist(list, x.id); } catch (e) { const off = useStore.getState().settings?.ai?.active === x.id; setTest({ ...test, [x.id]: '✕ ' + e.message + (off ? '。已先停用，修好后再测试' : '') }); if (off) await persist(list, null); } }}>测试</button>
-          <button className="btn sm ghost" onClick={() => { const l = list.filter((y) => y.id !== x.id); setList(l); persist(l, s.ai.active === x.id ? l[0]?.id || null : s.ai.active); }}>删除</button></div>
+          {s.ai.active === x.id ? <span className="tag acc">正在用</span> : <button className="btn sm" onClick={() => persist(list, x.id)}>用这个</button>}
+          <button className="btn sm" onClick={async () => { await persist(list, s.ai.active); setTest({ ...test, [x.id]: '测试中…' }); try { const r = await api('ai:test', x.id); setTest({ ...test, [x.id]: '通过：' + (r.text || '连通') }); if (!s.ai.active || s.ai.active !== x.id) await persist(list, x.id); } catch (e) { const off = useStore.getState().settings?.ai?.active === x.id; setTest({ ...test, [x.id]: '失败：' + e.message + (off ? '。已先停用，修好后再测试' : '') }); if (off) await persist(list, null); } }}>测试</button>
+          <button className="ib sm" title="删除" onClick={() => { const l = list.filter((y) => y.id !== x.id); setList(l); persist(l, s.ai.active === x.id ? l[0]?.id || null : s.ai.active); }}><Icon n="trash" s={14} /></button></div>
         {x.proto === 'cli' ? <div className="grid2">
           <div><label>CLI</label><select value={x.cli} onChange={(e) => upd(x.id, { cli: e.target.value, name: info.clis[e.target.value].name + '（CLI 登录）' })}>{Object.entries(info?.clis || {}).map(([k, c]) => <option key={k} value={k}>{c.name}</option>)}</select></div>
-          <div><label>状态</label><div className="note">{cli ? (cli[x.cli]?.path ? '✓ 找到 ' + cli[x.cli].path : '没找到。安装：' + info.clis[x.cli].install) : '检测中…'}</div><div className="note">登录：{info?.clis?.[x.cli]?.login}</div></div>
+          <div><label>状态</label><div className="note">{cli ? (cli[x.cli]?.path ? <span className="st ok">找到 {cli[x.cli].path}</span> : '没找到。安装：' + info.clis[x.cli].install) : '检测中…'}</div><div className="note">登录：{info?.clis?.[x.cli]?.login}</div></div>
         </div> : <div className="grid2">
           <div><label>接口地址</label><input value={x.baseUrl || ''} onChange={(e) => upd(x.id, { baseUrl: e.target.value })} /></div>
           <div><label>模型</label><input value={x.model || ''} onChange={(e) => upd(x.id, { model: e.target.value })} /></div>
           <div><label>协议</label><select value={x.proto} onChange={(e) => upd(x.id, { proto: e.target.value })}><option value="openai">OpenAI 兼容</option><option value="anthropic">Anthropic 兼容</option><option value="gemini">Gemini</option></select></div>
-          <div><label>Key {x.hasKey ? '（已设置，留空不改）' : ''}</label><input type="password" value={keys[x.id] || ''} placeholder={x.hasKey ? '••••••••' : 'sk-…'} onChange={(e) => setKeys({ ...keys, [x.id]: e.target.value })} /></div>
-          <div><label>价格（元 / 百万 token）输入 · 输出</label><div className="row"><input type="number" value={x.priceIn || 0} onChange={(e) => upd(x.id, { priceIn: +e.target.value })} /><input type="number" value={x.priceOut || 0} onChange={(e) => upd(x.id, { priceOut: +e.target.value })} /></div></div>
-          <div><label>本月上限（元，0 = 不限）</label><input type="number" value={x.limit || 0} onChange={(e) => upd(x.id, { limit: +e.target.value })} /></div>
+          {GROUP(x) !== 'local' && <div><label>Key {x.hasKey ? '（已设置，留空不改）' : ''}</label><input type="password" value={keys[x.id] || ''} placeholder={x.hasKey ? '••••••••' : 'sk-…'} onChange={(e) => setKeys({ ...keys, [x.id]: e.target.value })} /></div>}
+          {GROUP(x) === 'key' && <><div><label>价格（元 / 百万 token）输入 · 输出</label><div className="row"><input type="number" value={x.priceIn || 0} onChange={(e) => upd(x.id, { priceIn: +e.target.value })} /><input type="number" value={x.priceOut || 0} onChange={(e) => upd(x.id, { priceOut: +e.target.value })} /></div></div>
+          <div><label>本月上限（元，0 = 不限）</label><input type="number" value={x.limit || 0} onChange={(e) => upd(x.id, { limit: +e.target.value })} /></div></>}
         </div>}
         <div className="row" style={{ marginTop: 8 }}><button className="btn sm pri" onClick={() => persist(list, s.ai.active).then(() => S().say('已保存'))}>保存</button><span className="note">{test[x.id]}</span></div>
-      </div>))}
-    {found.length > 0 && !list.some((x) => x.proto === 'cli') && <div className="field" style={{ background: 'rgba(92,194,138,.07)' }}><b>推荐：用本机已经登录的 CLI</b><div className="note" style={{ margin: '4px 0 6px' }}>不用填 Key，走你自己的订阅，不额外花钱。</div><div className="row">{found.map((k) => <button key={k} className="btn sm pri" onClick={() => add('cli', k)}>用 {info?.clis?.[k]?.name || k}</button>)}</div></div>}
-    {!found.length && !list.length && <div className="note" style={{ padding: '0 14px 8px' }}>推荐顺序：① 装了 Claude Code / Codex 就用「CLI 登录」，不用 Key；② 买了国内 Coding Plan（智谱、Kimi、通义等）用对应的那一项，Key 在对方控制台的「API Key」页面；③ 想完全离线用本地 Ollama。</div>}
-    <div className="field"><label>添加</label><div className="chips">
-      <button className="chip" onClick={() => add('cli')}>CLI 登录（Claude Code / Codex / Gemini / Qwen）</button>
-      {presets.map((p) => <button key={p.id} className="chip" onClick={() => add(p)} title={p.note}>{p.name}</button>)}
-    </div></div>
+      </div>);
+  return <>
+    <div className="field"><b>AI 接口</b><div className="note">Key 用系统钥匙串加密，只存在本机。{found.length ? '' : '推荐顺序：装了 Claude Code / Codex 就用本机登录；买了国内 Coding Plan 就用订阅套餐；想完全离线用本地 Ollama。'}</div></div>
+    {GROUPS.map(([g, n, d]) => { const mine = list.filter((x) => GROUP(x) === g); const pre = g === 'cli' ? [] : presets.filter((x) => GROUP(x) === g); return (
+      <div key={g} style={{ marginBottom: 6 }}>
+        <div className="field" style={{ borderBottom: 0, paddingBottom: 4 }}><div className="row"><b>{n}</b><span className="note">{d}</span></div></div>
+        {mine.map(card)}
+        <div className="field"><div className="chips">
+          {g === 'cli' && Object.entries(info?.clis || {}).map(([k, c]) => <button key={k} className={'chip' + (found.includes(k) ? ' on' : '')} onClick={() => add('cli', k)} title={found.includes(k) ? '本机已找到' : '还没装：' + c.install}><Icon n="plus" s={12} />{c.name}{found.includes(k) ? ' · 已找到' : ''}</button>)}
+          {pre.map((x) => <button key={x.id} className="chip" onClick={() => add(x)} title={x.note}><Icon n="plus" s={12} />{x.name}</button>)}
+        </div></div>
+      </div>); })}
   </>;
 }
 
@@ -66,7 +80,7 @@ function TtsTab() {
   const upd = (k, patch) => setT({ ...t, [k]: { ...t[k], ...patch } });
   const keyIn = (k) => <input type="password" placeholder={s.tts[k]?.hasKey ? '已设置，留空不改' : 'Key'} value={t[k]?.key || ''} onChange={(e) => upd(k, { key: e.target.value })} />;
   const commit = async () => { await save({ tts: t }); S().say('已保存'); };
-  const test = async (provider) => { await commit(); setMsg('合成中…'); try { const u = await api('tts:preview', { provider, voice: info.tts[provider]?.voices?.[0]?.[0] || '', text: '你好，这是墨剪的配音测试。', speed: 1 }); new Audio(u).play(); setMsg('✓ ' + provider + ' 可以用'); } catch (e) { setMsg('✕ ' + e.message); } };
+  const test = async (provider) => { await commit(); setMsg('合成中…'); try { const u = await api('tts:preview', { provider, voice: info.tts[provider]?.voices?.[0]?.[0] || '', text: '你好，这是墨剪的配音测试。', speed: 1 }); new Audio(u).play(); setMsg(provider + ' 可以用'); } catch (e) { setMsg('出错：' + e.message); } };
   return <>
     <Field label="默认配音接口" note="每个角色可以单独选接口和音色（音频页）。在线接口失败时会自动退回系统语音，保证能出声。">
       <select value={t.default} onChange={(e) => setT({ ...t, default: e.target.value })}>{Object.entries(info?.tts || {}).map(([k, v]) => <option key={k} value={k}>{v.name}</option>)}</select>
@@ -86,7 +100,7 @@ function TtsTab() {
 function AsrTab() {
   const s = useStore((x) => x.settings); const [a, setA] = useState(s.asr); const [ok, setOk] = useState(null);
   useEffect(() => setA(s.asr), [s]);
-  const check = async () => { await save({ asr: a }); setOk('检测中…'); try { setOk((await api('asr:available')) ? '✓ 可以用' : '✕ 不可用'); } catch (e) { setOk('✕ ' + e.message); } };
+  const check = async () => { await save({ asr: a }); setOk('检测中…'); try { setOk((await api('asr:available')) ? '可以用' : '不可用'); } catch (e) { setOk('出错：' + e.message); } };
   return <>
     <Field label="听写引擎" note="听写用来校验配音读没读错、自动出字幕、去口误。本地引擎不联网、不花钱。">
       <div className="chips"><button className={'chip' + (a.engine === 'local' ? ' on' : '')} onClick={() => setA({ ...a, engine: 'local' })}>本地 faster-whisper</button><button className={'chip' + (a.engine === 'api' ? ' on' : '')} onClick={() => setA({ ...a, engine: 'api' })}>接口（OpenAI 兼容）</button></div>

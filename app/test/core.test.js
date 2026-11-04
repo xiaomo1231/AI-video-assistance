@@ -99,7 +99,7 @@ test('离线配乐与音效', () => {
 });
 
 test('模板与 Skill 数量', () => {
-  assert.equal(TEMPLATES.length, 30); assert.equal(new Set(TEMPLATES.map((t) => t.id)).size, 30);
+  assert.equal(TEMPLATES.length, 45); assert.equal(new Set(TEMPLATES.map((t) => t.id)).size, 45);
   assert.equal(SKILLS.length, 16);
   for (const s of SKILLS) if (s.loop) assert.equal(s.steps[s.loop.from].tool, 'review', `${s.name} 的回路起点应是审片`);
 });

@@ -3,7 +3,8 @@ import React, { useEffect, useRef, useState } from 'react';
 import { drawCard } from '../player/cards.js';
 import { templateById } from '../../../core/templates.js';
 import { api } from '../api.js';
-import { useStore } from '../store.js';
+import { useStore, S } from '../store.js';
+import Icon from './Icon.jsx';
 
 export function Slider({ label, value, min = -1, max = 1, step = 0.01, fmt = (v) => (+v).toFixed(2), onChange, onStart, onEnd }) {
   const kb = useRef(false); const kt = useRef(null);
@@ -25,7 +26,7 @@ export function Modal({ title, children, onClose, foot, wide }) {
   return (
     <div className="modal-bg" onMouseDown={(e) => e.target === e.currentTarget && onClose?.()}>
       <div className="modal" style={wide ? { width: 'min(980px,94vw)' } : null}>
-        <div className="pane-h">{title}<span className="spacer" />{onClose && <button className="ib" onClick={onClose}>✕</button>}</div>
+        <div className="pane-h">{title}<span className="spacer" />{onClose && <button className="ib" onClick={onClose} title="关闭"><Icon n="x" /></button>}</div>
         <div className="scroll" style={{ padding: 14 }}>{children}</div>
         {foot && <div className="foot">{foot}</div>}
       </div>
@@ -98,7 +99,7 @@ export const fmtSize = (b) => (b > 1e9 ? (b / 1e9).toFixed(2) + ' GB' : (b / 1e6
 
 /** 波形：从主进程取峰值，画到 canvas */
 const peakCache = new Map();
-export function Wave({ file, color = 'rgba(0,0,0,.45)', from = 0, len, total }) {
+export function Wave({ file, color = 'rgba(255,255,255,.6)', from = 0, len, total }) {
   const dir = useStore((s) => s.dir); const cv = useRef(null); const [pk, setPk] = useState(peakCache.get(file));
   useEffect(() => { if (!file || peakCache.has(file)) return; api('asset:peaks', dir, file).then((r) => { peakCache.set(file, r); setPk(r); }).catch(() => {}); }, [file]);
   useEffect(() => {
@@ -107,5 +108,31 @@ export function Wave({ file, color = 'rgba(0,0,0,.45)', from = 0, len, total }) 
     const a = Math.floor(from * ps), b = Math.floor((from + (len ?? dur)) * ps); const span = Math.max(1, b - a);
     for (let x = 0; x < c.width; x++) { const i = a + Math.floor((x / c.width) * span); const v = Math.abs(arr[i] || 0); const hh = v * c.height * 0.9; g.fillRect(x, (c.height - hh) / 2, 1, Math.max(1, hh)); }
   });
-  return <canvas ref={cv} />;
+  return <canvas className="wave" ref={cv} />;
 }
+
+/** 拖动分隔条改栏宽 / 栏高，松手记到本机。k 是 layout 里的键，sign=-1 表示往左 / 往上拖变大 */
+export function Split({ dir = 'v', k, sign = 1, min = 160, max = 900 }) {
+  const [on, setOn] = useState(false);
+  const down = (e) => {
+    e.preventDefault(); const p0 = dir === 'v' ? e.clientX : e.clientY; const v0 = S().layout[k]; setOn(true);
+    const mv = (ev) => { const d = (dir === 'v' ? ev.clientX : ev.clientY) - p0; S().setLayout({ [k]: Math.round(Math.max(min, Math.min(max, v0 + sign * d))), preset: null }); };
+    const up = () => { setOn(false); window.removeEventListener('pointermove', mv); window.removeEventListener('pointerup', up); };
+    window.addEventListener('pointermove', mv); window.addEventListener('pointerup', up);
+  };
+  return <div className={'split ' + dir + (on ? ' on' : '')} onPointerDown={down} onDoubleClick={() => S().setLayout({ [k]: ({ tlH: 300, propsW: 340, dockW: 360, boardSide: 440 })[k] })} title="拖动调整大小，双击还原" />;
+}
+
+/** 模板缩略图：直接用卡片渲染器画一张标题卡；v 为竖版 */
+export function TplCanvas({ t, v, heading }) {
+  const cv = useRef(null);
+  useEffect(() => {
+    const c = cv.current; const W = v ? 1080 : 1920, H = v ? 1920 : 1080; const w = v ? 216 : 384; c.width = w; c.height = Math.round(w * H / W);
+    const g = c.getContext('2d'); g.setTransform(w / W, 0, 0, w / W, 0, 0);
+    try { drawCard(g, { W, H, tpl: t, card: { layout: 'title', heading: heading || t.name, body: t.en }, shot: { id: t.id, font: 1 }, local: 2.5, dur: 4 }); } catch (e) { console.warn(t.id, e); }
+  }, [t.id, v, heading]);
+  return <canvas ref={cv} style={{ width: '100%', height: '100%', display: 'block' }} />;
+}
+
+export const aiReady = (s) => !!s.settings?.ai?.providers?.find((x) => x.id === s.settings.ai.active);
+export { Icon };

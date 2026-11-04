@@ -20,6 +20,14 @@ export function emptyProject(name = '未命名工程', o = {}) {
   };
 }
 
+// ---------- 轨道：主轨固定；文字、音效、音乐可以加多条，配音和字幕各一条 ----------
+export const TRACK_KINDS = { tx: '文字', v: '主轨', vo: '配音', sub: '字幕', sx: '音效', mu: '音乐' };
+export const defTracks = () => [{ id: 'tx', kind: 'tx', name: '文字' }, { id: 'v', kind: 'v', name: '主轨' }, { id: 'vo', kind: 'vo', name: '配音' }, { id: 'sub', kind: 'sub', name: '字幕' }, { id: 'sx', kind: 'sx', name: '音效' }, { id: 'mu', kind: 'mu', name: '音乐' }];
+/** 片段在哪条轨上：没写就在这一类的默认轨 */
+export const trackOf = (kind, item) => item?.track || kind;
+/** 这条轨是不是被静音 / 隐藏了（预览和导出都看这个）。默认轨的开关沿用 settings.mute 里的 vo / sx / mu */
+export const trackOff = (p, kind, item) => !!(p.settings?.mute || {})[trackOf(kind, item)] || (item?.track && !p.tracks?.some((t) => t.id === item.track));
+
 export function newShot(o = {}) {
   return {
     id: o.id || uid('s'), title: o.title || '新镜头', chapter: o.chapter || '', prompt: o.prompt || '', camera: o.camera || '',
@@ -43,6 +51,7 @@ export function normalize(raw) {
   for (const k of ['assets', 'shots', 'lines', 'music', 'sfx', 'texts', 'annotations']) p[k] = Array.isArray(raw[k]) ? raw[k] : [];
   p.shots = p.shots.map((s) => ({ ...newShot(), ...s, grade: { ...defGrade(), ...(s.grade || {}) } }));
   p.lines = p.lines.map((l) => ({ soff: l.off, sdur: l.dur, voice: {}, ...l }));
+  if (!Array.isArray(p.tracks) || !p.tracks.some((t) => t.kind === 'v')) p.tracks = defTracks();
   layout(p);
   return p;
 }
@@ -54,6 +63,31 @@ export const ops = {
   updateShot(p, { id, patch }) { const s = p.shots.find((x) => x.id === id); if (!s) throw new Error('没有镜头 ' + id); Object.assign(s, patch); if (patch.grade) s.grade = { ...defGrade(), ...patch.grade }; },
   addShot(p, { after, shot }) { const s = newShot(shot); const i = after ? p.shots.findIndex((x) => x.id === after) + 1 : p.shots.length; p.shots.splice(i, 0, s); return s.id; },
   removeShot(p, { id }) { p.shots = p.shots.filter((s) => s.id !== id); p.lines = p.lines.filter((l) => l.shot !== id); p.sfx = p.sfx.filter((x) => x.anchor !== id); p.texts = p.texts.filter((x) => x.anchor !== id); },
+  /** 按给定的镜头 id 顺序重排（分镜墙拖完一起提交）；没列到的镜头接在后面 */
+  reorderShots(p, { ids }) { const m = new Map(p.shots.map((s) => [s.id, s])); const a = ids.map((id) => m.get(id)).filter(Boolean); p.shots = [...a, ...p.shots.filter((s) => !ids.includes(s.id))]; },
+  addTrack(p, { kind, name, id }) {
+    if (!['tx', 'sx', 'mu', 'vo', 'sub'].includes(kind)) throw new Error('这种轨道不能加：' + kind);
+    if (!p.tracks) p.tracks = defTracks();
+    if (kind === 'vo' || kind === 'sub') { // 配音、字幕只有一条：加回来就是重新打开
+      if (!p.tracks.some((t) => t.id === kind)) { const at = kind === 'vo' ? p.tracks.findIndex((t) => t.kind === 'v') + 1 : p.tracks.findIndex((t) => t.id === 'vo') + 1 || p.tracks.findIndex((t) => t.kind === 'v') + 1; p.tracks.splice(at, 0, { id: kind, kind, name: TRACK_KINDS[kind] }); }
+      p.settings.mute = { ...(p.settings.mute || {}), [kind]: false }; if (kind === 'sub') p.subtitle.burn = true; return kind;
+    }
+    const t = { id: id || (p.tracks.some((x) => x.id === kind) ? uid(kind) : kind), kind, name: name || TRACK_KINDS[kind] + ' ' + (p.tracks.filter((x) => x.kind === kind).length + 1) };
+    if (kind === 'tx') { const v = p.tracks.findIndex((x) => x.kind === 'v'); p.tracks.splice(Math.max(0, v), 0, t); }
+    else { const last = p.tracks.map((x) => x.kind).lastIndexOf(kind); p.tracks.splice(last >= 0 ? last + 1 : p.tracks.length, 0, t); }
+    return t.id;
+  },
+  /** 删轨道：文字 / 音效 / 音乐轨连同上面的片段一起删；配音、字幕轨只是关掉（台词还在，加回来就恢复） */
+  removeTrack(p, { id }) {
+    const t = p.tracks?.find((x) => x.id === id); if (!t || t.kind === 'v') return;
+    p.tracks = p.tracks.filter((x) => x !== t);
+    const on = (it) => trackOf(t.kind, it) === id;
+    if (t.kind === 'tx') p.texts = p.texts.filter((x) => !on(x));
+    else if (t.kind === 'sx') p.sfx = p.sfx.filter((x) => !on(x));
+    else if (t.kind === 'mu') p.music = p.music.filter((x) => !on(x));
+    else { p.settings.mute = { ...(p.settings.mute || {}), [id]: true }; if (id === 'sub') p.subtitle.burn = false; }
+  },
+  updateTrack(p, { id, patch }) { const t = p.tracks?.find((x) => x.id === id); if (!t) return; if ('off' in patch) p.settings.mute = { ...(p.settings.mute || {}), [id]: !!patch.off }; const { off, ...rest } = patch; Object.assign(t, rest); },
   moveShot(p, { id, to }) { const i = p.shots.findIndex((s) => s.id === id); if (i < 0) return; const [s] = p.shots.splice(i, 1); p.shots.splice(Math.max(0, Math.min(to, p.shots.length)), 0, s); },
   duplicateShot(p, { id, newId }) {
     const i = p.shots.findIndex((s) => s.id === id); if (i < 0) return;
@@ -136,6 +170,7 @@ export function withIds(op, args = {}) {
   else if (op === 'addSfx') a.id = a.id || uid('x');
   else if (op === 'addText') a.id = a.id || uid('t');
   else if (op === 'addAnnotation') a.id = a.id || uid('n');
+  else if (op === 'addTrack') a.id = a.id || (a.kind === 'vo' || a.kind === 'sub' ? undefined : uid(a.kind));
   else if (op === 'addAsset') a.asset = { ...(a.asset || {}), id: a.asset?.id || uid('a') };
   return a;
 }

@@ -2,6 +2,7 @@
 import { drawCard, drawSubtitle, drawTextClip } from './cards.js';
 import { filterXML, isNeutral } from './grade.js';
 import { templateById } from '../../../core/templates.js';
+import { trackOff } from '../../../core/project.js';
 import { shotAt, subT, absT } from '../../../core/timing.js';
 
 const clamp = (x, a = 0, b = 1) => Math.max(a, Math.min(b, x));
@@ -165,8 +166,8 @@ export class Player {
   drawOverlay(t) {
     const p = this.p, c = this.over.getContext('2d'); const W = p.width, H = p.height;
     c.setTransform(this.outW / W, 0, 0, this.outH / H, 0, 0); c.clearRect(0, 0, W, H);
-    for (const x of p.texts) { const t0 = absT(p, x); if (t >= t0 && t < t0 + x.dur) drawTextClip(c, { W, H, t: x, local: t - t0, tpl: this.tpl }); }
-    if (this.showSubs && p.subtitle?.burn !== false) {
+    for (const x of p.texts) { if (trackOff(p, 'tx', x)) continue; const t0 = absT(p, x); if (t >= t0 && t < t0 + x.dur) drawTextClip(c, { W, H, t: x, local: t - t0, tpl: this.tpl }); }
+    if (this.showSubs && p.subtitle?.burn !== false && !trackOff(p, 'sub')) {
       for (const l of p.lines) { const s0 = subT(p, l); if (t >= s0 && t < s0 + l.sdur) drawSubtitle(c, { W, H, text: l.orig && p.subtitle?.bilingual ? `${l.text}\n${l.orig}` : l.text, style: p.subtitle?.style || 'clean', tpl: this.tpl, size: p.subtitle?.size || 1, k: (t - s0) / 0.25 }); }
     }
   }
@@ -199,10 +200,9 @@ class AudioPreview {
       const len = dur ? Math.max(0, dur - Math.max(0, -start)) : undefined;
       src.start(now + Math.max(0, start), o, len); this.nodes.push(src);
     };
-    const mute = p.settings?.mute || {};
-    for (const l of p.lines) if (!mute.vo && l.audio && !l.subOnly) { const a = absT(p, l); if (a + l.dur > t) sched(pl.url(l.audio), a, 0, l.audioDur || l.dur, l.gain || 0); }
-    for (const m of p.music) { if (m.mute || mute.mu) continue; const as = p.assets.find((x) => x.id === m.asset); if (as && absT(p, m) + m.dur > t) sched(pl.url(as.path), absT(p, m), m.in || 0, m.dur, m.gain ?? -12, m.duck !== false); }
-    for (const x of p.sfx) { const at = absT(p, x); if (at < t || x.mute || mute.sx) continue; const as = x.asset && p.assets.find((q) => q.id === x.asset); const u = as ? pl.url(as.path) : x.synth ? pl.url(`audio/sfx/${x.synth}.v2.wav`) : null; if (u) sched(u, at, 0, null, x.gain ?? -12); }
+        for (const l of p.lines) if (!trackOff(p, 'vo', l) && l.audio && !l.subOnly) { const a = absT(p, l); if (a + l.dur > t) sched(pl.url(l.audio), a, 0, l.audioDur || l.dur, l.gain || 0); }
+    for (const m of p.music) { if (m.mute || trackOff(p, 'mu', m)) continue; const as = p.assets.find((x) => x.id === m.asset); if (as && absT(p, m) + m.dur > t) sched(pl.url(as.path), absT(p, m), m.in || 0, m.dur, m.gain ?? -12, m.duck !== false); }
+    for (const x of p.sfx) { const at = absT(p, x); if (at < t || x.mute || trackOff(p, 'sx', x)) continue; const as = x.asset && p.assets.find((q) => q.id === x.asset); const u = as ? pl.url(as.path) : x.synth ? pl.url(`audio/sfx/${x.synth}.v2.wav`) : null; if (u) sched(u, at, 0, null, x.gain ?? -12); }
   }
   stop() { this.token = null; for (const n of this.nodes) { try { n.stop(); } catch {} } this.nodes = []; }
   close() { this.stop(); this.ctx?.close(); }

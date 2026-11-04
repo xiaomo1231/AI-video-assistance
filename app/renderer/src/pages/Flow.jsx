@@ -3,6 +3,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useStore, S } from '../store.js';
 import { api } from '../api.js';
 import { startWorkflow } from '../App.jsx';
+import { Icon } from '../components/ui.jsx';
 
 const TOOLS = [
   ['brief', 'human', '需求简报'], ['ai.questions', 'ai', 'AI 提问'], ['ai.treatment', 'ai', '结构候选'], ['ai.outline', 'ai', '拆知识点'], ['ai.storyboard', 'ai', '分镜与台词'],
@@ -23,8 +24,6 @@ export default function Flow() {
   useEffect(() => { const s = all.find((x) => x.id === id); if (s) { setWf(JSON.parse(JSON.stringify(s))); setSel(null); } }, [id, all.length]);
   if (!wf) return <div className="empty">载入中…</div>;
   const live = run && run.wf === wf.id ? run : null;
-  const cols = 4, NW = 170, NH = 76, GX = 60, GY = 54;
-  const pos = (i) => { const r = Math.floor(i / cols), c = r % 2 ? cols - 1 - (i % cols) : i % cols; return { x: 30 + c * (NW + GX), y: 30 + r * (NH + GY) }; };
   const upd = (fn) => { const n = JSON.parse(JSON.stringify(wf)); fn(n); setWf(n); };
   const st = sel != null ? wf.steps[sel] : null;
   const saveMine = async (name) => {
@@ -34,30 +33,29 @@ export default function Flow() {
     const s = await api('settings:set', { mySkills: list }); useStore.setState({ settings: s }); setId(mine.id); S().say('已存成我的 Skill');
   };
   const runIt = async () => { try { await startWorkflow(wf, Object.fromEntries((wf.inputs || []).map((i) => [i.key, i.default ?? '']))); } catch (e) { S().say(e.message, true); } };
-  const H = pos(wf.steps.length - 1).y + NH + 40;
+  const busy = run && !['done', 'error', 'cancelled'].includes(run.state);
 
   return (
     <div className="flow">
       <div className="flowcv">
-        <div style={{ position: 'sticky', top: 0, left: 0, zIndex: 3, display: 'flex', gap: 8, padding: 10, background: 'linear-gradient(var(--bg),transparent)' }}>
+        <div className="flowbar">
           <select value={id} onChange={(e) => setId(e.target.value)} style={{ width: 260 }}>{all.map((s) => <option key={s.id} value={s.id}>{s.star ? '★ ' : ''}{s.name}</option>)}</select>
           {naming == null ? <button className="btn" onClick={() => setNaming(wf.name.replace(/（我的）$/, '') + '（我的）')}>存成我的 Skill</button>
             : <><input autoFocus value={naming} style={{ width: 200 }} onChange={(e) => setNaming(e.target.value)} onKeyDown={(e) => { e.stopPropagation(); if (e.key === 'Enter') saveMine(naming); if (e.key === 'Escape') setNaming(null); }} /><button className="btn pri" onClick={() => saveMine(naming)}>保存</button></>}
-          {wf.id.startsWith('my_') && <button className="btn ghost" onClick={async () => { const s = await api('settings:set', { mySkills: (settings.mySkills || []).filter((x) => x.id !== wf.id) }); useStore.setState({ settings: s }); setId('promo'); }}>删除</button>}
+          {wf.id.startsWith('my_') && <button className="btn ghost" onClick={async () => { const s = await api('settings:set', { mySkills: (settings.mySkills || []).filter((x) => x.id !== wf.id) }); useStore.setState({ settings: s }); setId('promo'); }}><Icon n="trash" s={14} />删除</button>}
           <span className="spacer" />
-          <button className="btn pri" disabled={!p || (run && !['done', 'error', 'cancelled'].includes(run.state))} onClick={runIt} title={p ? '' : '先在开始页新建或打开工程'}>▶ 在当前工程运行</button>
+          {live?.waiting && <button className="btn" onClick={() => S().setDock({ open: true, tab: 'wf' })}><Icon n="alert" s={14} />有一步在等你</button>}
+          <button className="btn pri" disabled={!p || busy} onClick={runIt} title={p ? '' : '先在开始页新建或打开工程'}><Icon n="play" s={12} />在当前工程运行</button>
         </div>
-        <div style={{ position: 'relative', height: H, minWidth: cols * (NW + GX) + 60 }}>
-          <svg style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none' }}>
-            {wf.steps.slice(1).map((s, k) => { const a = pos(k), b = pos(k + 1); const sameRow = a.y === b.y; const x1 = sameRow ? (a.x < b.x ? a.x + NW : a.x) : a.x + NW / 2, y1 = sameRow ? a.y + NH / 2 : a.y + NH, x2 = sameRow ? (a.x < b.x ? b.x : b.x + NW) : b.x + NW / 2, y2 = sameRow ? b.y + NH / 2 : b.y; return <path key={k} className="edge" d={`M${x1},${y1} L${x2},${y2}`} />; })}
-            {wf.loop && wf.steps[wf.loop.to] && (() => { const a = pos(wf.loop.to), b = pos(wf.loop.from); return <path className="edge loop" d={`M${a.x + NW / 2},${a.y} C${a.x + NW / 2},${a.y - 40} ${b.x + NW / 2},${b.y - 40} ${b.x + NW / 2},${b.y}`} />; })()}
-          </svg>
-          {wf.steps.map((s, i) => { const q = pos(i); const status = live?.status?.[i]; return (
-            <div key={i} className={'node' + (sel === i ? ' on' : '') + (status ? ' ' + status : s.skip ? ' skipped' : '')} style={{ left: q.x, top: q.y, height: NH }} onClick={() => setSel(i)}>
-              <span className={'tag ' + s.kind}>{KIND[s.kind]}</span> <span className="note">{i + 1}</span>
-              <b>{s.name}</b><div className="d">{live?.results?.[i] || s.desc || TOOLS.find((x) => x[0] === s.tool)?.[2] || ""}</div>
-            </div>); })}
+        <div className="nodes" style={{ '--cols': 4 }}>
+          {wf.steps.map((s, i) => { const status = live?.status?.[i]; const waiting = live?.waiting && live.i === i; return (
+            <button key={i} className={'node' + (sel === i ? ' on' : '') + (waiting ? ' waiting' : status ? ' ' + status : s.skip ? ' skipped' : '')} onClick={() => setSel(i)}>
+              <span className="r"><span className="faint num">{String(i + 1).padStart(2, '0')}</span><span className={'tag ' + s.kind}>{KIND[s.kind]}</span>{wf.loop?.from === i && <span className="tag review" title={`不通过回到第 ${wf.loop.to + 1} 步`}>回路</span>}{s.skip && <span className="tag">跳过</span>}</span>
+              <b>{s.name}</b><div className="d">{live?.results?.[i] || s.desc || TOOLS.find((x) => x[0] === s.tool)?.[2] || ''}</div>
+              {status === 'done' && <span className="ok"><Icon n="check" s={14} /></span>}{status === 'run' && <span className="ok"><span className="spin" /></span>}
+            </button>); })}
         </div>
+        {wf.loop && <div className="loopnote"><i />审片「{wf.steps[wf.loop.from]?.name}」不通过，带着意见回到第 {wf.loop.to + 1} 步「{wf.steps[wf.loop.to]?.name}」，最多 {wf.loop.max} 轮</div>}
       </div>
       <div className="pane" style={{ borderLeft: '1px solid var(--line)' }}>
         <div className="pane-h">{st ? `步骤 ${sel + 1}` : wf.name}</div>

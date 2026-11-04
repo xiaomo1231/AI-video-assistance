@@ -5,20 +5,21 @@ import { existsSync } from 'node:fs';
 import { run } from './ffmpeg.js';
 import { lineT, absT } from '../timing.js';
 import { abs } from './store.js';
+import { trackOff } from '../project.js';
 import { makeSfx } from './synth.js';
 
 const db = (g) => Math.pow(10, (g || 0) / 20);
 
 /** 收集所有声音片段：[{file, at, in, dur, gain, kind}] */
 export async function collectClips(dir, p) {
-  const clips = []; const mute = p.settings?.mute || {};
-  for (const l of p.lines) if (!mute.vo && !l.subOnly && l.audio && existsSync(abs(dir, l.audio))) clips.push({ file: abs(dir, l.audio), at: lineT(p, l), in: 0, dur: l.audioDur || l.dur, gain: l.gain || 0, kind: 'voice' });
-  for (const m of p.music) { const a = p.assets.find((x) => x.id === m.asset); const f = a ? abs(dir, a.path) : m.file && abs(dir, m.file); if (f && existsSync(f) && !m.mute && !mute.mu) clips.push({ file: f, at: absT(p, m), in: m.in || 0, dur: m.dur, gain: m.gain ?? -12, kind: 'music', fadeIn: m.fadeIn, fadeOut: m.fadeOut, duck: m.duck !== false }); }
+  const clips = [];
+  for (const l of p.lines) if (!trackOff(p, 'vo', l) && !l.subOnly && l.audio && existsSync(abs(dir, l.audio))) clips.push({ file: abs(dir, l.audio), at: lineT(p, l), in: 0, dur: l.audioDur || l.dur, gain: l.gain || 0, kind: 'voice' });
+  for (const m of p.music) { const a = p.assets.find((x) => x.id === m.asset); const f = a ? abs(dir, a.path) : m.file && abs(dir, m.file); if (f && existsSync(f) && !m.mute && !trackOff(p, 'mu', m)) clips.push({ file: f, at: absT(p, m), in: m.in || 0, dur: m.dur, gain: m.gain ?? -12, kind: 'music', fadeIn: m.fadeIn, fadeOut: m.fadeOut, duck: m.duck !== false }); }
   for (const x of p.sfx) {
     let f = null;
     if (x.asset) { const a = p.assets.find((q) => q.id === x.asset); f = a && abs(dir, a.path); }
     else if (x.synth) { f = path.join(dir, 'audio/sfx', `${x.synth}.v2.wav`); if (!existsSync(f)) { await fs.mkdir(path.dirname(f), { recursive: true }); await fs.writeFile(f, makeSfx(x.synth)); } }
-    if (f && existsSync(f) && !x.mute && !mute.sx) clips.push({ file: f, at: absT(p, x), in: 0, dur: null, gain: x.gain ?? -12, kind: 'sfx' });
+    if (f && existsSync(f) && !x.mute && !trackOff(p, 'sx', x)) clips.push({ file: f, at: absT(p, x), in: 0, dur: null, gain: x.gain ?? -12, kind: 'sfx' });
   }
   for (const s of p.shots) {
     if (s.src.kind !== 'media' || s.muted) continue;

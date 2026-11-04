@@ -3,9 +3,9 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useStore, S } from '../store.js';
 import { api, on } from '../api.js';
 import { shotAt } from '../../../core/timing.js';
-import { sid } from './ui.jsx';
+import { sid, Icon } from './ui.jsx';
 
-const QUICK = ['把第 3 镜字号放大到 120%', '整体节奏快一点，每镜少停 0.3 秒', '帮我检查一遍有什么问题', '按圈注逐条修改', '给每个章节开头加一个转场', '换成手绘风模板'];
+const QUICK = ['整体节奏快一点', '帮我检查一遍有什么问题', '按圈注逐条修改', '给每个章节开头加一个转场', '把第 3 镜字号放大到 120%'];
 
 export default function AiDock() {
   const p = useStore((s) => s.p); const dir = useStore((s) => s.dir); const settings = useStore((s) => s.settings); const page = useStore((s) => s.page);
@@ -37,12 +37,8 @@ export default function AiDock() {
   const drop = (i) => setMsgs((ms) => ms.map((x, k) => (k === i ? { ...x, dropped: true } : x)));
 
   return (
-    <div className="aidock">
-      <div className="pane-h"><span style={{ whiteSpace: 'nowrap' }}>AI 助手</span><span className="spacer" />
-        <span className="tag ai" title="到设置里切换">{active ? active.name : '未配置'}</span>
-        <button className="ib" onClick={() => useStore.setState({ aiOpen: false })} title="收起">⟩</button>
-      </div>
-      {!active && <div className="warnbox">还没配 AI。到「设置 → AI」加一个：API Key、Coding Plan、Claude Code / Codex 等 CLI 登录，或本地 Ollama。<button className="btn sm" style={{ marginTop: 6 }} onClick={() => S().setPage('settings')}>去设置</button></div>}
+    <>
+      {!active && <div className="warnbox">还没配 AI。到设置里加一个：本机已登录的 Claude Code / Codex、Coding Plan、API Key，或本地 Ollama。<div style={{ marginTop: 8 }}><button className="btn sm pri" onClick={() => S().setPage('settings')}><Icon n="gear" s={14} />去设置</button></div></div>}
       <div className="msgs" ref={box}>
         {msgs.map((m, i) => (
           <div key={i} className={'msg ' + m.role} style={m.err ? { color: 'var(--bad)' } : null}>
@@ -52,21 +48,21 @@ export default function AiDock() {
                 {m.changes.map((c, k) => <div key={k} className={c.kind}>{c.kind === 'add' ? '+ ' : c.kind === 'del' ? '− ' : '~ '}{c.text}</div>)}
                 {m.bad > 0 && <div className="mod" style={{ marginTop: 4 }}>改完后体检有 {m.bad} 项要看</div>}
                 <div className="row" style={{ marginTop: 8 }}>
-                  {m.applied ? <span className="st ok">已应用（可撤销）</span> : m.dropped ? <span className="st draft">已放弃</span> : <>
+                  {m.applied ? <span className="st ok">已应用，改过的地方在时间线上闪一下（可撤销）</span> : m.dropped ? <span className="st draft">已放弃</span> : <>
                     <button className="btn sm pri" onClick={() => apply(i)}>应用</button><button className="btn sm" onClick={() => drop(i)}>放弃</button></>}
                 </div>
               </div>
             )}
           </div>
         ))}
-        {busy && <div className="msg tool">思考中… <button className="btn sm ghost" onClick={() => api('ai:cancel', busy)}>停止</button></div>}
+        {busy && <div className="msg tool row"><span className="spin" />思考中… <button className="btn sm ghost" onClick={() => api('ai:cancel', busy)}><Icon n="stop" s={12} />停止</button></div>}
       </div>
       <div className="quick">{QUICK.map((q) => <button key={q} disabled={!active} title={active ? '' : '先在设置里配一个 AI'} onClick={() => send(q)}>{q}</button>)}</div>
       <div className="ask">
         <textarea rows={3} placeholder="说一句要改什么。Enter 发送，Shift+Enter 换行" value={input} onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => { e.stopPropagation(); if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } }} />
-        <div className="row" style={{ marginTop: 6 }}><span className="note">会把当前镜头和选中的东西一起告诉 AI</span><span className="spacer" /><button className="btn pri sm" disabled={!!busy || !input.trim() || !active} title={active ? '' : '先在设置里配一个 AI'} onClick={() => send()}>发送</button></div>
+        <div className="row" style={{ marginTop: 6 }}><span className="note">会把当前镜头和选中的东西一起告诉 AI</span><span className="spacer" /><button className="btn pri sm" disabled={!!busy || !input.trim() || !active} title={active ? '' : '先在设置里配一个 AI'} onClick={() => send()}><Icon n="send" s={14} />发送</button></div>
       </div>
-    </div>
+    </>
   );
 }
