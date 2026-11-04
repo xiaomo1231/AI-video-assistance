@@ -90,7 +90,7 @@ label{display:block;color:var(--dim);font-size:12px;margin-bottom:4px}
 .top{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:center;gap:12px;padding:0 12px;height:52px;border-bottom:1px solid var(--line);background:var(--ink)}
 .brand{display:flex;align-items:center;gap:10px;min-width:0}
 .seal{width:26px;height:26px;border-radius:5px;background:var(--seal);color:#f6e9e2;font:700 14px/26px var(--serif);text-align:center;flex:none}
-.brand .nm{font:600 14px var(--serif);letter-spacing:.08em;white-space:nowrap}
+.brand .nm{font:600 15px var(--serif);letter-spacing:.14em;white-space:nowrap}
 .proj{display:flex;align-items:center;gap:7px;min-width:0;font-size:12.5px}
 .proj b{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .proj .dot{width:7px;height:7px;border-radius:50%;background:var(--ok);flex:none}.proj .dot.dirty{background:var(--warn)}

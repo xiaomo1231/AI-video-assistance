@@ -4,7 +4,7 @@ import { useStore, S } from './store.js';
 import { api, on, serveRpc } from './api.js';
 import { health, healthBad } from '../../core/health.js';
 import Dock from './components/Dock.jsx';
-import Icon from './components/Icon.jsx';
+import Icon, { Logo } from './components/Icon.jsx';
 import { Split } from './components/ui.jsx';
 import { deleteSel } from './components/Timeline.jsx';
 import Home from './pages/Home.jsx';
@@ -99,7 +99,7 @@ export default function App() {
     <div className="app">
       <div className="top">
         <div className="brand">
-          <span className="seal">墨</span><span className="nm">墨剪</span>
+          <Logo /><span className="nm">墨剪</span>
           {p && <div className="proj" title={dirty ? '有改动，马上自动保存' : '已保存'}><span className={'dot' + (dirty ? ' dirty' : '')} /><b>{p.name}</b></div>}
         </div>
         <div className="stages">{STAGES.map(([k, n]) => (

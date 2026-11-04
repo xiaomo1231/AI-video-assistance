@@ -47,3 +47,16 @@ export default function Icon({ n, s = 16, className = '', title }) {
   );
 }
 export const ICONS = Object.keys(P);
+
+/** 墨剪的标志：一滴墨被斜着剪开 */
+export function Logo({ s = 26 }) {
+  return (
+    <svg width={s} height={s} viewBox="0 0 32 32" aria-hidden="true" style={{ flex: 'none' }}>
+      <defs>
+        <linearGradient id="mj-logo-g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#74c4c4" /><stop offset="1" stopColor="#2c7a7c" /></linearGradient>
+        <mask id="mj-logo-m"><rect width="32" height="32" fill="#fff" /><path d="M3 24 29 14.2" stroke="#000" strokeWidth="2.4" /></mask>
+      </defs>
+      <path mask="url(#mj-logo-m)" fill="url(#mj-logo-g)" d="M16 2.5C13 7 7 13.6 7 19.6a9 9 0 0 0 18 0C25 13.6 19 7 16 2.5Z" />
+    </svg>
+  );
+}
