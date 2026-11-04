@@ -1,0 +1,16 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>测试场景</title>
+<style>html,body{margin:0;background:#000;overflow:hidden}canvas{position:absolute;left:0;top:0}</style></head>
+<body><canvas id="c" width="1920" height="1080"></canvas>
+<script>
+// 一个最小的 lemo-opuscar 影片：三段画面（0–2s 红、2–4s 绿、4–6s 蓝），带 vo 事件
+window.DUR = 6;
+window.EV = [{ t: 0.4, type: 'vo', id: 'L1' }, { t: 2.5, type: 'vo', id: 'L2' }, { t: 4.3, type: 'vo', id: 'L3' }];
+const g = document.getElementById('c').getContext('2d');
+window.render = (t) => {
+  const k = t < 2 ? 0 : t < 4 ? 1 : 2;
+  g.fillStyle = ['#c0392b', '#27ae60', '#2c3e8f'][k]; g.fillRect(0, 0, 1920, 1080);
+  g.fillStyle = '#fff'; g.font = 'bold 120px sans-serif'; g.fillText('场景 ' + (k + 1), 200 + (t % 2) * 100, 560);
+};
+window.render(0); window.READY = true;
+</script></body></html>
